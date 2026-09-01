@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fireshield-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fireshield
+      POSTGRES_PASSWORD: fireshield_dev_pw
+      POSTGRES_DB: fireshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - fireshield_pg_data:/var/lib/postgresql/data
+
+volumes:
+  fireshield_pg_data:

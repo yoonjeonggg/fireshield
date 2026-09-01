@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --primary-900: #0e2a47;
+  --primary-700: #153a63;
+  --primary-500: #1d4e89;
+  --primary-300: #5b83b4;
+  --primary-100: #dbe6f2;
+
+  --accent-600: #c0431f;
+  --accent-500: #e0532a;
+  --accent-100: #fbe2d8;
+
+  --safe-600: #1f8a4c;
+  --safe-500: #2ea866;
+  --safe-100: #dff5e7;
+
+  --caution-600: #b8860b;
+  --caution-500: #d9a520;
+  --caution-100: #faf0d4;
+
+  --danger-600: #b3261e;
+  --danger-500: #d6362c;
+  --danger-100: #f9dcda;
+
+  --ink-950: #141a24;
+  --ink-800: #333c4a;
+  --ink-600: #5b6675;
+  --ink-400: #8b95a3;
+
+  --paper-50: #f6f7f9;
+  --paper-100: #eef1f4;
+  --paper-200: #dfe4ea;
+  --white: #ffffff;
+
+  --radius-card: 14px;
+  --radius-sm: 9px;
+
+  --font-head: "Wanted Sans", "Pretendard", "Noto Sans KR", -apple-system, sans-serif;
+  --font-body: "Wanted Sans", "Pretendard", "Noto Sans KR", -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--paper-50);
+  color: var(--ink-950);
+  font-family: var(--font-body);
+  line-height: 1.55;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-head);
+  letter-spacing: -0.01em;
+}
+
+@keyframes fireshield-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fireshield-check-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
