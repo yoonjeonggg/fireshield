@@ -40,10 +40,10 @@ export default function Header() {
         </a>
 
         <nav className="flex items-center gap-7">
-          <a href="/" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
-            진위확인
-          </a>
-          <a href="/risk-map" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+          <a href="/#verify" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+  진위확인
+</a>
+<a href="/#risk-map" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   위험지역 지도
 </a>
         </nav>
