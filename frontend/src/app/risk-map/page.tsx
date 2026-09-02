@@ -1,9 +1,7 @@
-import RiskMap from "@/components/RiskMap";
-
-export default function RiskMapPage() {
+export default function Home() {
   return (
     <main>
-      <RiskMap />
+      <h1>Risk Map</h1>
     </main>
   );
 }

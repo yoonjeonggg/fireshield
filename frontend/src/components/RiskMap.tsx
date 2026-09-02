@@ -19,7 +19,7 @@ declare global {
   }
 }
 
-export default function RiskMap() {
+export default function RiskMap({ compact = false }: { compact?: boolean }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const infoWindowRef = useRef<any>(null);
@@ -32,12 +32,10 @@ export default function RiskMap() {
   const [error, setError] = useState<string | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
 
-  // 드릴다운 상태
   const [drilldownSido, setDrilldownSido] = useState<string | null>(null);
   const [sigunguItems, setSigunguItems] = useState<SigunguDetail[]>([]);
   const [drilldownLoading, setDrilldownLoading] = useState(false);
 
-  // 1. 시도 데이터 로드
   useEffect(() => {
     fetchRiskMap()
       .then((data) => {
@@ -48,19 +46,9 @@ export default function RiskMap() {
       .finally(() => setLoading(false));
   }, []);
 
-  // 2. 구글맵 스크립트 로드 + 초기화
   useEffect(() => {
     if (zones.length === 0) return;
     if (!GOOGLE_MAPS_API_KEY) return;
-
-    function openInfo(zone: RiskZone, marker: any) {
-      infoWindowRef.current.setContent(
-        `<div style="font-family:sans-serif;font-size:13px;line-height:1.6;color:#141a24;">
-           <b>${zone.region_name}</b><br>최근 3개월 신고 <b>${zone.report_count}건</b><br>${zone.main_targets}
-         </div>`
-      );
-      infoWindowRef.current.open(mapInstanceRef.current, marker);
-    }
 
     function initMap() {
       if (!mapRef.current) return;
@@ -150,7 +138,6 @@ export default function RiskMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones]);
 
-  // 3. 시도 선택 → 드릴다운 진입 (지도 확대 + 시군구 리스트 로드)
   async function handleSelectSido(zone: RiskZone) {
     setSelectedRegion(zone.region_name);
 
@@ -179,7 +166,6 @@ export default function RiskMap() {
     }
   }
 
-  // 4. 전체보기로 복귀
   function handleResetView() {
     setSelectedRegion(null);
     setDrilldownSido(null);
@@ -224,6 +210,15 @@ export default function RiskMap() {
         <p className="mt-1 text-xs" style={{ color: "var(--ink-400)" }}>
           출처: 소방청 전국 화재 현황(2025) · 시도 단위 집계, 좌표는 시/도청 소재지 기준
         </p>
+        {compact && (
+          <a 
+            href="/risk-map"
+            className="inline-block mt-3 text-sm font-semibold"
+            style={{ color: "var(--primary-500)" }}
+          >
+            전체 지도 자세히 보기 →
+          </a>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
@@ -235,7 +230,7 @@ export default function RiskMap() {
             borderRadius: 16,
             padding: 20,
             color: "#fff",
-            minHeight: 520,
+            minHeight: 700,
           }}
         >
           <div
@@ -354,44 +349,83 @@ export default function RiskMap() {
                 ))
               )}
             </>
-          ) : (
-            zones.map((zone) => {
-              const isSelected = selectedRegion === zone.region_name;
-              return (
-                <button
-                  key={zone.region_name}
-                  onClick={() => handleSelectSido(zone)}
-                  className="flex items-start gap-3 text-left w-full transition-transform"
-                  style={{
-                    padding: "14px 16px",
-                    background: "var(--white)",
-                    border: isSelected ? "1.5px solid var(--primary-500)" : "1px solid var(--paper-200)",
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    boxShadow: isSelected ? "0 4px 12px -6px rgba(29,78,137,.4)" : "none",
-                  }}
-                >
-                  <span
-                    className="flex items-center justify-center shrink-0 text-white text-xs font-bold"
-                    style={{ width: 30, height: 30, borderRadius: 9, background: riskColor(zone.risk_score) }}
-                  >
-                    {zone.report_count}
-                  </span>
-                  <div>
-                    <div className="text-sm font-bold" style={{ color: "var(--ink-950)" }}>
-                      {zone.region_name}
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--ink-600)" }}>
-                      {zone.main_targets}
-                    </div>
-                    <div className="text-[11px] mt-1" style={{ color: "var(--primary-500)" }}>
-                      시군구별 상세보기 →
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
+         ) : (
+  <div
+    className="flex flex-col"
+    style={{
+      maxHeight: 700,
+      overflowY: "auto",
+      background: "var(--white)",
+      border: "1px solid var(--paper-200)",
+      borderRadius: 12,
+    }}
+  >
+    {zones.map((zone, index) => {
+      const isSelected = selectedRegion === zone.region_name;
+      const maxCount = zones[0]?.report_count || 1;
+      const barPct = Math.max(6, (zone.report_count / maxCount) * 100);
+      const rank = index + 1;
+
+      return (
+        <button
+          key={zone.region_name}
+          onClick={() => handleSelectSido(zone)}
+          className="flex items-center gap-3 text-left w-full transition-colors"
+          style={{
+            padding: "10px 14px",
+            background: isSelected ? "var(--primary-100)" : "transparent",
+            borderBottom: index < zones.length - 1 ? "1px solid var(--paper-100)" : "none",
+            cursor: "pointer",
+          }}
+        >
+          <span
+            className="shrink-0 text-xs font-bold text-center"
+            style={{
+              width: 20,
+              color: rank <= 3 ? "var(--primary-700)" : "var(--ink-400)",
+            }}
+          >
+            {rank}
+          </span>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span
+                className="text-[13px] font-semibold truncate"
+                style={{ color: "var(--ink-950)" }}
+              >
+                {zone.region_name}
+              </span>
+              <span
+                className="text-xs font-bold shrink-0"
+                style={{ color: riskColor(zone.risk_score) }}
+              >
+                {zone.report_count}건
+              </span>
+            </div>
+            <div
+              style={{
+                height: 5,
+                borderRadius: 999,
+                background: "var(--paper-100)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${barPct}%`,
+                  background: riskColor(zone.risk_score),
+                  borderRadius: 999,
+                }}
+              />
+            </div>
+          </div>
+        </button>
+      );
+    })}
+  </div>
+)}
         </div>
       </div>
     </section>
