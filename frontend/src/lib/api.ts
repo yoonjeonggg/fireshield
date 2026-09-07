@@ -1,6 +1,6 @@
 import { VerifyRequest, VerifyResponse } from "@/types/verify";
 import { RiskMapResponse } from "@/types/riskMap";
-
+import { AdminStatsResponse } from "@/types/admin";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -39,3 +39,17 @@ export async function fetchSigunguDetail(sido: string): Promise<SigunguDetailRes
   return res.json();
 }
 
+export async function fetchAdminStats(adminKey: string): Promise<AdminStatsResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/admin/stats`, {
+    headers: { "X-Admin-Key": adminKey },
+  });
+
+  if (res.status === 403) {
+    throw new Error("관리자 인증에 실패했습니다. 키를 확인해주세요.");
+  }
+  if (!res.ok) {
+    throw new Error("통계 데이터를 불러오지 못했습니다.");
+  }
+
+  return res.json();
+}

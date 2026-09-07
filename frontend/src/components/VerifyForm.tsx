@@ -65,7 +65,7 @@ export default function VerifyForm() {
         return;
       }
       setStepIndex(i);
-    }, 500);
+    }, 250);
   }
 
   function stopStepAnimation() {
@@ -104,8 +104,8 @@ export default function VerifyForm() {
     setLoading(true);
     startStepAnimation();
 
-    // 체크리스트 애니메이션이 최소한 끝까지 재생되도록, API 응답과 최소 대기시간 중 늦게 끝나는 쪽을 기다림
-    const minDelay = new Promise((resolve) => setTimeout(resolve, LOADING_STEPS.length * 500));
+    
+    const minDelay = new Promise((resolve) => setTimeout(resolve, LOADING_STEPS.length * 250));
 
     try {
       const [data] = await Promise.all([

@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from app.api.v1.risk_map import router as risk_map_router
 import logging
+from app.api.v1.admin import router as admin_router
 
 from app.api.v1.verify import router as verify_router
 from app.core.database import engine
@@ -29,7 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -66,8 +67,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 app.include_router(verify_router)
-app.include_router(verify_router)
 app.include_router(risk_map_router)
+app.include_router(admin_router)
 
 @app.get("/health")
 async def health():

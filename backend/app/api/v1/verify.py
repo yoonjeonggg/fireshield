@@ -1,12 +1,13 @@
-from app.services.scam_patterns import detect_scam_phrases
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.blacklist import is_blacklisted
 from app.core.crypto import encrypt
 from app.core.database import get_db
 from app.models.verify_log import VerifyLog
 from app.schemas.verify import VerifyRequest, VerifyResponse, Evidence
 from app.services.law_api import check_recent_amendment, LawApiError
 from app.services.fire_business import find_business_by_name
+from app.services.scam_patterns import detect_scam_phrases
 
 router = APIRouter(prefix="/api/v1", tags=["verify"])
 
@@ -24,6 +25,30 @@ router = APIRouter(prefix="/api/v1", tags=["verify"])
 )
 async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
     risk_signals: list[tuple[int, str]] = []  # (점수, 이유)
+    critical_signal_found = False  # 치명적 위험 신호(존재하지 않는 법령/업체 등) 발견 여부
+
+    # --- 0. 블랙리스트 대조 ---
+    blacklisted_org = await is_blacklisted(db, "org", payload.claimed_org)
+    blacklisted_business = await is_blacklisted(db, "business", payload.target_business)
+
+    if blacklisted_org or blacklisted_business:
+        blacklist_evidence = Evidence(
+            source="관리자 블랙리스트",
+            result=(
+                f"'{blacklisted_org.name}' 기관명이 사칭 신고 이력에 등록되어 있습니다."
+                if blacklisted_org
+                else f"'{blacklisted_business.name}' 업체명이 사칭 신고 이력에 등록되어 있습니다."
+            ),
+            matched=True,
+        )
+        risk_signals.append((50, "관리자 블랙리스트에 등록된 기관/업체명"))
+        critical_signal_found = True
+    else:
+        blacklist_evidence = Evidence(
+            source="관리자 블랙리스트",
+            result="블랙리스트에 등록된 이력 없음",
+            matched=False,
+        )
 
     # --- 1. 법제처 법령 변경이력 대조 ---
     if payload.claim_type == "law_amendment" and payload.law_name:
@@ -37,6 +62,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
                     matched=False,
                 )
                 risk_signals.append((35, "존재하지 않는 법령명 언급"))
+                critical_signal_found = True
             elif result["is_recent"]:
                 law_evidence = Evidence(
                     source="법제처_법령 변경이력 목록 조회",
@@ -83,9 +109,9 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             matched=False,
         )
         risk_signals.append((30, "소방시설업 등록 현황에 없는 업체명 언급"))
+        critical_signal_found = True
 
-
-        # --- 4. 사기 의심 문구 패턴 탐지 ---
+    # --- 3. 사기 의심 문구 패턴 탐지 ---
     combined_text = f"{payload.claim_type} {payload.law_name or ''}"
     matched_patterns = detect_scam_phrases(combined_text)
 
@@ -106,7 +132,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             matched=False,
         )
 
-            # --- 5. 계좌번호 요구 위험도 (다른 신호와 결합하여 가중치 계산) ---
+    # --- 4. 계좌번호 요구 위험도 (다른 신호와 결합하여 가중치 계산) ---
     if payload.account_number:
         has_scam_phrase = bool(matched_patterns)
         has_unregistered_business = not matched_businesses
@@ -143,6 +169,11 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
     score = sum(points for points, _ in risk_signals)
     score = max(0, min(100, score))
 
+    # 존재하지 않는 법령/업체명처럼 치명적 신호가 있으면, 다른 안전 신호로 상쇄되더라도
+    # 최소 caution 단계(30점) 이상은 보장한다.
+    if critical_signal_found:
+        score = max(score, 30)
+
     if score >= 60:
         risk_level = "danger"
         recommendation = "매우 위험합니다. 요구에 응하지 마시고 관할 소방서 또는 112에 즉시 신고하세요."
@@ -153,7 +184,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         risk_level = "safe"
         recommendation = "뚜렷한 위험 신호는 없으나, 금전이나 개인정보를 요구받았다면 기관에 재확인하세요."
 
-    evidence = [law_evidence, biz_evidence, phrase_evidence, account_evidence]
+    evidence = [blacklist_evidence, law_evidence, biz_evidence, phrase_evidence, account_evidence]
 
     log = VerifyLog(
         claimed_org=payload.claimed_org,
