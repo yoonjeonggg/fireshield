@@ -1,4 +1,4 @@
-import httpx
+import httpx, time
 from xml.etree import ElementTree as ET
 from datetime import datetime, timedelta
 from app.core.config import settings
@@ -8,27 +8,32 @@ class LawApiError(Exception):
     """법제처 API 호출 실패 시 발생하는 예외"""
     pass
 
+_law_cache: dict[str, tuple[float, list[dict]]] = {}
+_CACHE_TTL_SECONDS = 60 * 60 * 24  # 24시간
+
+
+def _get_cached(law_name: str) -> list[dict] | None:
+    entry = _law_cache.get(law_name)
+    if entry is None:
+        return None
+    cached_at, data = entry
+    if time.time() - cached_at > _CACHE_TTL_SECONDS:
+        del _law_cache[law_name]
+        return None
+    return data
+
+def _set_cache(law_name: str, data: list[dict]) -> None:
+    _law_cache[law_name] = (time.time(), data)
+
 
 async def search_law_by_name(law_name: str) -> list[dict]:
-    """
-    법령명으로 현행법령(시행일 기준) 목록을 조회합니다.
+    cached = _get_cached(law_name)
+    if cached is not None:
+        return cached
 
-    Args:
-        law_name: 검색할 법령명 (예: "소방시설 설치 및 관리에 관한 법률")
-
-    Returns:
-        검색된 법령 정보 리스트. 각 항목은 dict로:
-        - law_name: 법령명
-        - status: 현행연혁코드 (현행/연혁/시행예정)
-        - promulgation_date: 공포일자
-        - enforcement_date: 시행일자
-        - amendment_type: 제개정구분명
-        - ministry: 소관부처명
-        - detail_link: 법령상세링크 (전체 URL)
-    """
     params = {
         "OC": settings.law_api_key,
-        "target": "eflaw",  # 현행법령(시행일 기준) 목록조회
+        "target": "eflaw",
         "type": "XML",
         "query": law_name,
     }
@@ -40,7 +45,9 @@ async def search_law_by_name(law_name: str) -> list[dict]:
         except httpx.HTTPError as e:
             raise LawApiError(f"법제처 API 호출 실패: {e}") from e
 
-    return _parse_law_list_xml(response.text)
+    results = _parse_law_list_xml(response.text)
+    _set_cache(law_name, results)
+    return results
 
 
 def _parse_law_list_xml(xml_text: str) -> list[dict]:

@@ -130,7 +130,7 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
 
     window.initFireShieldMap = initMap;
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=initFireShieldMap`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async&callback=initFireShieldMap`;
     script.async = true;
     script.setAttribute("data-fireshield-gmaps", "true");
     script.onerror = () => setError("구글 지도를 불러오지 못했습니다.");
