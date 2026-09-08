@@ -8,6 +8,8 @@ from app.schemas.verify import VerifyRequest, VerifyResponse, Evidence
 from app.services.law_api import check_recent_amendment, LawApiError
 from app.services.fire_business import find_business_by_name
 from app.services.scam_patterns import detect_scam_phrases
+from app.services.ai_verify import assess_scam_risk
+from app.schemas.verify import AiAssessment
 
 router = APIRouter(prefix="/api/v1", tags=["verify"])
 
@@ -165,14 +167,39 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             matched=False,
         )
 
-    # --- 5. 최종 점수 계산 ---
-    score = sum(points for points, _ in risk_signals)
-    score = max(0, min(100, score))
+    # --- 5. 규칙 기반 점수 계산 ---
+    rule_score = sum(points for points, _ in risk_signals)
+    rule_score = max(0, min(100, rule_score))
 
     # 존재하지 않는 법령/업체명처럼 치명적 신호가 있으면, 다른 안전 신호로 상쇄되더라도
     # 최소 caution 단계(30점) 이상은 보장한다.
     if critical_signal_found:
-        score = max(score, 30)
+        rule_score = max(rule_score, 30)
+
+    # --- 6. AI(로컬 LLM) 사기 판정 — 가드레일 통과 후 규칙 점수와 '따로' 노출 ---
+    ai_result = await assess_scam_risk(
+        rule_score,
+        claimed_org=payload.claimed_org,
+        claimed_person=payload.claimed_person,
+        claim_type=payload.claim_type,
+        target_business=payload.target_business,
+        law_name=payload.law_name,
+        has_account_number=payload.account_number is not None,
+    )
+
+    ai_assessment = AiAssessment(
+        score=ai_result.score,
+        status=ai_result.status.value,
+        label=ai_result.label,
+        detail=ai_result.detail,
+        used_in_verdict=ai_result.used_in_verdict,
+    )
+
+    # 최종 점수: 신뢰 가능한 AI 점수가 더 높을 때만 보수적으로 상향(max).
+    # AI가 폐기/보류/미응답이면 규칙 점수를 그대로 쓴다.
+    score = rule_score
+    if ai_result.used_in_verdict and ai_result.score is not None:
+        score = max(rule_score, ai_result.score)
 
     if score >= 60:
         risk_level = "danger"
@@ -194,6 +221,9 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         account_number=encrypt(payload.account_number),  # 암호화해서 저장
         risk_level=risk_level,
         score=score,
+        rule_score=rule_score,
+        ai_score=ai_result.score,
+        ai_status=ai_result.status.value,
     )
     db.add(log)
     await db.commit()
@@ -201,6 +231,8 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
     return VerifyResponse(
         risk_level=risk_level,
         score=score,
+        rule_score=rule_score,
+        ai_assessment=ai_assessment,
         evidence=evidence,
         recommendation=recommendation,
     )

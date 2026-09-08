@@ -1,5 +1,5 @@
-import { ShieldCheck, AlertTriangle, ShieldAlert, Check, X } from "lucide-react";
-import { VerifyResponse, RiskLevel } from "@/types/verify";
+import { ShieldCheck, AlertTriangle, ShieldAlert, Check, X, Cpu } from "lucide-react";
+import { VerifyResponse, RiskLevel, AiAssessment } from "@/types/verify";
 
 type LevelStyle = {
   label: string;
@@ -44,6 +44,45 @@ const RISK_CONFIG: Record<RiskLevel, LevelStyle> = {
     Icon: ShieldAlert,
   },
 };
+
+function AiPanel({ ai }: { ai: AiAssessment }) {
+  const discarded =
+    ai.status === "discarded_invalid" ||
+    ai.status === "discarded_conflict" ||
+    ai.status === "unavailable";
+  const shownScore = ai.score !== null && ai.score !== undefined ? `${ai.score}` : "—";
+
+  return (
+    <div
+      style={{
+        padding: "12px 14px",
+        borderRadius: 10,
+        background: discarded ? "var(--paper-100)" : "var(--paper-50)",
+        border: "1px solid var(--paper-200)",
+      }}
+    >
+      <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+        <Cpu size={14} strokeWidth={2} color="var(--ink-600)" />
+        <span className="font-medium" style={{ fontSize: 13, color: "var(--ink-950)" }}>
+          AI 딥러닝 판정 (로컬 LLM)
+        </span>
+        <span
+          className="ml-auto font-bold"
+          style={{ fontSize: 16, color: discarded ? "var(--ink-400)" : "var(--ink-950)" }}
+        >
+          {shownScore}
+          {!discarded && <span style={{ fontSize: 11, color: "var(--ink-400)" }}> /100</span>}
+        </span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--ink-600)" }}>{ai.detail}</div>
+      {!ai.used_in_verdict && (
+        <div style={{ fontSize: 11, color: "var(--ink-400)", marginTop: 4 }}>
+          ※ 이 점수는 최종 판정에 반영되지 않았습니다. 최종 판정은 공공데이터 규칙 점수 기준입니다.
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function VerifyResult({ result }: { result: VerifyResponse }) {
   const config = RISK_CONFIG[result.risk_level];
@@ -108,6 +147,29 @@ export default function VerifyResult({ result }: { result: VerifyResponse }) {
               transition: "width .6s ease",
             }}
           />
+        </div>
+
+        {/* 규칙 점수 vs AI 점수 — 따로 표시 */}
+        <div className="flex flex-col gap-2.5" style={{ marginBottom: 14 }}>
+          <div
+            className="flex items-center gap-2"
+            style={{
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--paper-50)",
+              border: "1px solid var(--paper-200)",
+            }}
+          >
+            <ShieldCheck size={14} strokeWidth={2} color="var(--ink-600)" />
+            <span className="font-medium" style={{ fontSize: 13, color: "var(--ink-950)" }}>
+              공공데이터 규칙 점수
+            </span>
+            <span className="ml-auto font-bold" style={{ fontSize: 16, color: "var(--ink-950)" }}>
+              {result.rule_score}
+              <span style={{ fontSize: 11, color: "var(--ink-400)" }}> /100</span>
+            </span>
+          </div>
+          {result.ai_assessment && <AiPanel ai={result.ai_assessment} />}
         </div>
 
         {/* 근거 목록 */}

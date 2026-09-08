@@ -18,5 +18,8 @@ class VerifyLog(Base):
     target_business = Column(String)
     account_number = Column(String)
     risk_level = Column(String)
-    score = Column(Integer)
+    score = Column(Integer)  # 최종(보수적) 점수
+    rule_score = Column(Integer, nullable=True)  # 규칙 기반 점수
+    ai_score = Column(Integer, nullable=True)  # AI 점수 (폐기 시 NULL)
+    ai_status = Column(String, nullable=True)  # ai_guardrail.AiStatus
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+from sqlalchemy import text
 from app.api.v1.risk_map import router as risk_map_router
 import logging
 from app.api.v1.admin import router as admin_router
@@ -21,6 +22,13 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Alembic 미도입 프로젝트 — 신규 컬럼은 기동 시 멱등 ALTER로 반영
+        for column_ddl in (
+            "ADD COLUMN IF NOT EXISTS rule_score INTEGER",
+            "ADD COLUMN IF NOT EXISTS ai_score INTEGER",
+            "ADD COLUMN IF NOT EXISTS ai_status VARCHAR",
+        ):
+            await conn.execute(text(f"ALTER TABLE verify_logs {column_ddl}"))
     yield
 
 

@@ -44,8 +44,20 @@ class Evidence(BaseModel):
     matched: bool
 
 
+class AiAssessment(BaseModel):
+    """로컬 LLM(딥러닝) 기반 사기 위험도 판정. 규칙 점수와 별도로 표시된다."""
+
+    score: Optional[int]        # 0~100. 값이 폐기되면 None.
+    status: str                 # ai_guardrail.AiStatus 값
+    label: str                  # "AI: 위험" / "AI 판단 보류" 등
+    detail: str                 # 사람이 읽는 설명
+    used_in_verdict: bool       # 이 점수가 최종 판정에 반영되었는지
+
+
 class VerifyResponse(BaseModel):
     risk_level: str
-    score: int
+    score: int                 # 최종(보수적) 점수 — 하위호환 위해 이름 유지
+    rule_score: int            # 공공데이터 규칙 기반 점수
+    ai_assessment: Optional[AiAssessment] = None
     evidence: list[Evidence]
     recommendation: str
