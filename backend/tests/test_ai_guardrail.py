@@ -75,7 +75,7 @@ def test_evaluate_ok_high():
     assert r.status == AiStatus.OK
     assert r.score == 90
     assert r.used_in_verdict
-    assert r.label == "AI: 위험"
+    assert r.label == "사기 위험 높음"
     assert not r.anomaly
 
 
@@ -92,7 +92,7 @@ def test_evaluate_model_unavailable():
     assert r.score is None
     assert not r.used_in_verdict
     assert not r.anomaly
-    assert r.label == "AI 판정 사용 불가"
+    assert r.label == "분석 미실시"
 
 
 def test_evaluate_nan_is_discarded():

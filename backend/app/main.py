@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
+import asyncio
 from sqlalchemy import text
 from app.api.v1.risk_map import router as risk_map_router
+from app.services.ai_verify import warm_up as warm_up_ai
 import logging
 from app.api.v1.admin import router as admin_router
 
@@ -29,7 +31,10 @@ async def lifespan(app: FastAPI):
             "ADD COLUMN IF NOT EXISTS ai_status VARCHAR",
         ):
             await conn.execute(text(f"ALTER TABLE verify_logs {column_ddl}"))
+    # 첫 요청의 콜드스타트를 피하려고 백그라운드로 모델 예열 (실패해도 무시)
+    warm_task = asyncio.create_task(warm_up_ai())
     yield
+    warm_task.cancel()
 
 
 app = FastAPI(title="FireShield API", lifespan=lifespan)

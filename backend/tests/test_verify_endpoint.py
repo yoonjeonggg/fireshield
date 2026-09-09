@@ -89,6 +89,15 @@ _PAYLOAD = {
     "account_number": "123-456-789012",
 }
 
+# 각 항목이 서로 다르고 개별 형식은 유효하지만, 공공데이터로 아무것도 확인되지 않고
+# 사기 문구·블랙리스트 같은 적극적 신호도 없는 입력 → "확인 불가"가 나와야 한다.
+_UNVERIFIABLE_PAYLOAD = {
+    "claimed_org": "강남중부소방서",
+    "claimed_person": "박담당",
+    "claim_type": "시설 관련 안내 연락 확인 요청",
+    "target_business": "강남종합시설관리",
+}
+
 
 def _post(monkeypatch, *, ai_enabled, ollama_response):
     monkeypatch.setattr(ai_verify.settings, "ai_enabled", ai_enabled)
@@ -150,3 +159,124 @@ def test_ai_low_score_never_lowers_final(monkeypatch):
     )
     # gap 이 크면 discarded_conflict, 작으면 low_confidence/ok — 어느 쪽이든 최종은 규칙 점수 밑으로 안 내려감
     assert body["score"] == body["rule_score"]
+
+
+# --- 터무니없는 입력은 판정 없이 422 로 거부 -------------------------------
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("claimed_org", "ㄹ"),          # 자모 한 글자
+        ("claimed_org", "ㅋㅋㅋㅋ"),      # 자모 반복
+        ("claimed_org", "asdf"),        # 한글 없음
+        ("claimed_person", "!"),        # 특수문자 한 글자
+        ("target_business", "----"),    # 특수문자 반복
+        ("target_business", "ㅁㄴㅇㄹ"),  # 자모만
+        ("law_name", "ㄹ"),
+        ("law_name", "abcd"),           # 법령명인데 한글 없음
+    ],
+)
+def test_implausible_input_rejected_with_422(field, value):
+    payload = {**_PAYLOAD, field: value}
+    resp = client.post("/api/v1/verify", json=payload)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"
+
+
+def test_all_fields_identical_rejected_with_422():
+    payload = {
+        "claimed_org": "강남오",
+        "claimed_person": "강남오",
+        "claim_type": "강남오",
+        "target_business": "강남오",
+    }
+    resp = client.post("/api/v1/verify", json=payload)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error"] == "invalid_request"
+    assert "같은 값" in resp.json()["detail"]
+
+
+def test_identical_ignoring_case_and_spaces_rejected():
+    payload = {
+        "claimed_org": "강남 소방",
+        "claimed_person": "강남소방",
+        "claim_type": "점검비 납부 요청",
+        "target_business": " 강남소방 ",
+    }
+    resp = client.post("/api/v1/verify", json=payload)
+    assert resp.status_code == 422, resp.text
+
+
+def test_distinct_fields_pass(monkeypatch):
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    resp = client.post("/api/v1/verify", json=_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+
+
+def test_fake_but_plausible_law_name_still_scored(monkeypatch):
+    # 존재하지 않지만 '그럴듯한' 가짜 법령명은 거부하지 말고 정상 판정해야 한다
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    payload = {**_PAYLOAD, "law_name": "소방시설안전특별관리법", "claim_type": "law_amendment"}
+    resp = client.post("/api/v1/verify", json=payload)
+    assert resp.status_code == 200, resp.text
+
+
+# --- 확인 불가(unverified) 판정 ------------------------------------------
+
+def test_unverifiable_input_returns_unverified(monkeypatch):
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    resp = client.post("/api/v1/verify", json=_UNVERIFIABLE_PAYLOAD)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["risk_level"] == "unverified"
+    assert body["score"] == body["rule_score"]
+
+
+def test_unverifiable_input_does_not_trust_ai_score(monkeypatch):
+    # 공공데이터로 확인 안 되는 입력이면 AI가 높은 점수를 줘도 최종 판정에 반영하지 않는다
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", True)
+
+    async def fake_call(prompt):
+        return '{"scam_probability": 0.7}'
+
+    monkeypatch.setattr(ai_verify, "_call_ollama", fake_call)
+    body = client.post("/api/v1/verify", json=_UNVERIFIABLE_PAYLOAD).json()
+    assert body["risk_level"] == "unverified"
+    assert body["ai_assessment"]["used_in_verdict"] is False
+    assert body["score"] == body["rule_score"]
+
+
+def test_scam_phrase_input_is_scored_not_unverified(monkeypatch):
+    # 업체는 미등록이지만 전형적 사기 문구가 있으면 '확인 불가'가 아니라 위험도를 매긴다
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    payload = {
+        **_UNVERIFIABLE_PAYLOAD,
+        "claim_type": "과태료 부과 전 오늘까지 계좌로 즉시 입금 요청",
+    }
+    body = client.post("/api/v1/verify", json=payload).json()
+    assert body["risk_level"] in ("caution", "danger")
+
+
+def test_unregistered_business_asking_for_money_is_scored_not_unverified(monkeypatch):
+    # 사기 문구가 없어도 '미등록 업체 + 계좌 이체 요구'면 확인 불가가 아니라 위험도를 매긴다
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    payload = {**_UNVERIFIABLE_PAYLOAD, "account_number": "352-1234-5678-90"}
+    body = client.post("/api/v1/verify", json=payload).json()
+    assert body["risk_level"] in ("caution", "danger")
+
+
+def test_fake_law_name_is_scored_not_unverified(monkeypatch):
+    # 존재하지 않는 법령을 개정 근거로 들면 확인 불가가 아니라 위험도를 매긴다
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+
+    async def law_missing(law_name):
+        return {"found": False, "is_recent": False, "current_law": {}}
+
+    monkeypatch.setattr(verify_api, "check_recent_amendment", law_missing)
+    payload = {
+        **_UNVERIFIABLE_PAYLOAD,
+        "claim_type": "law_amendment",
+        "law_name": "소방시설안전특별관리법",
+    }
+    body = client.post("/api/v1/verify", json=payload).json()
+    assert body["risk_level"] in ("caution", "danger")

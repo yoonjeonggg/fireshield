@@ -26,6 +26,7 @@ class RiskLevelStats(BaseModel):
     safe: int
     caution: int
     danger: int
+    unverified: int = 0
 
 
 class AdminStatsResponse(BaseModel):

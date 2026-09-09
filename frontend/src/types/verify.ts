@@ -1,5 +1,5 @@
 export type ClaimType = "law_amendment" | "inspection" | "subsidy" | "custom";
-export type RiskLevel = "safe" | "caution" | "danger";
+export type RiskLevel = "safe" | "caution" | "danger" | "unverified";
 
 export interface VerifyRequest {
   claimed_org: string;

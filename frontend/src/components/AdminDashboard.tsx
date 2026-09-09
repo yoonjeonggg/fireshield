@@ -8,6 +8,7 @@ const RISK_LABELS: Record<string, { label: string; color: string }> = {
   safe: { label: "안전", color: "var(--safe-600)" },
   caution: { label: "의심", color: "var(--caution-600)" },
   danger: { label: "위험", color: "var(--danger-600)" },
+  unverified: { label: "확인 불가", color: "var(--primary-700)" },
 };
 
 export default function AdminDashboard() {
@@ -108,11 +109,12 @@ export default function AdminDashboard() {
       {stats && (
         <>
           {/* 통계 카드 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
             <StatCard label="전체 조회" value={stats.total_count} color="var(--ink-950)" />
             <StatCard label="안전" value={stats.risk_level_stats.safe} color="var(--safe-600)" />
             <StatCard label="의심" value={stats.risk_level_stats.caution} color="var(--caution-600)" />
             <StatCard label="위험" value={stats.risk_level_stats.danger} color="var(--danger-600)" />
+            <StatCard label="확인 불가" value={stats.risk_level_stats.unverified} color="var(--primary-700)" />
           </div>
 
           {/* 최근 로그 테이블 */}

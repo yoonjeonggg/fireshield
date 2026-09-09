@@ -84,14 +84,14 @@ class GuardrailResult:
     @property
     def label(self) -> str:
         if self.status == AiStatus.UNAVAILABLE:
-            return "AI 판정 사용 불가"
+            return "분석 미실시"
         if self.score is None:
-            return "AI 판단 보류"
+            return "판단 보류"
         if self.score >= NEUTRAL_HIGH:
-            return "AI: 위험"
+            return "사기 위험 높음"
         if self.score >= 30:
-            return "AI: 의심"
-        return "AI: 안전"
+            return "의심 정황 있음"
+        return "위험 신호 낮음"
 
 
 def _truncate(text: str | None, limit: int = 500) -> str | None:
@@ -230,7 +230,7 @@ def evaluate(
         return GuardrailResult(
             score=None,
             status=AiStatus.UNAVAILABLE,
-            detail="AI 모델에 연결하지 못해 규칙 기반 점수만 사용합니다.",
+            detail="AI 분석 엔진에 연결하지 못했습니다. 공공데이터 대조 결과로만 판정했습니다.",
             raw_text=trimmed,
             parsed_value=None,
             anomaly=False,
@@ -242,7 +242,10 @@ def evaluate(
         return GuardrailResult(
             score=None,
             status=AiStatus.DISCARDED_INVALID,
-            detail=f"AI 응답을 신뢰할 수 없어 폐기하고 규칙 점수로 대체합니다 ({note}).",
+            detail=(
+                "AI 분석 결과의 형식이 올바르지 않아 이번 판정에서 제외했습니다. "
+                "공공데이터 대조 결과로 판정합니다."
+            ),
             raw_text=trimmed,
             parsed_value=None,
             anomaly=True,
@@ -266,8 +269,8 @@ def evaluate(
             score=None,
             status=AiStatus.DISCARDED_CONFLICT,
             detail=(
-                f"AI 점수({score})가 규칙 점수({rule_score})와 {gap}점이나 차이 나 "
-                f"신뢰할 수 없다고 보고 규칙 점수를 사용합니다."
+                f"AI 분석({score}점)이 공공데이터 대조 결과({rule_score}점)와 크게 달라 "
+                f"신뢰도가 낮다고 보고 이번 판정에서 제외했습니다."
             ),
             raw_text=trimmed,
             parsed_value=parsed_value,
@@ -278,7 +281,10 @@ def evaluate(
         return GuardrailResult(
             score=score,
             status=AiStatus.CLAMPED,
-            detail=f"AI가 범위를 벗어난 값({parsed_value})을 반환해 0~100으로 보정했습니다.",
+            detail=(
+                "AI 분석 값이 정상 범위를 벗어나 0~100으로 보정했습니다. "
+                "위험 방향은 참고 가능한 수준으로 반영했습니다."
+            ),
             raw_text=trimmed,
             parsed_value=parsed_value,
             anomaly=True,
@@ -289,8 +295,8 @@ def evaluate(
             score=score,
             status=AiStatus.LOW_CONFIDENCE,
             detail=(
-                f"AI 점수({score})가 애매한 중간 구간이라 참고용으로만 표시하고 "
-                f"최종 판정에는 반영하지 않습니다."
+                "AI 분석 결과가 위험·안전 어느 쪽으로도 뚜렷하지 않습니다. "
+                "참고용으로만 표시하며 최종 판정에는 반영하지 않았습니다."
             ),
             raw_text=trimmed,
             parsed_value=parsed_value,
@@ -300,8 +306,18 @@ def evaluate(
     return GuardrailResult(
         score=score,
         status=AiStatus.OK,
-        detail=f"AI 사기 위험 점수: {score}/100",
+        detail=_ok_detail(score),
         raw_text=trimmed,
         parsed_value=parsed_value,
         anomaly=False,
     )
+
+
+def _ok_detail(score: int) -> str:
+    """가드레일을 통과한 정상 AI 점수의 사람이 읽는 해석."""
+    if score >= NEUTRAL_HIGH:
+        return (
+            "AI가 접수 내용에서 소방기관 사칭 사기의 전형적인 패턴을 다수 확인했습니다. "
+            "요구에 응하기 전 관할 기관에 직접 연락해 확인하세요."
+        )
+    return "AI 분석에서는 사칭 사기로 볼 만한 뚜렷한 정황이 확인되지 않았습니다."

@@ -20,9 +20,9 @@ logger = logging.getLogger("fireshield")
 
 _SYSTEM_PROMPT = (
     "너는 대한민국 소방기관(소방서·소방공무원) 사칭 사기를 탐지하는 분류기다. "
-    "아래 신고 내용이 사칭 사기일 확률을 0.0~1.0 사이 실수로만 판단한다. "
-    "반드시 아래 JSON 형식 하나만 출력하고 다른 말은 절대 붙이지 마라.\n"
-    '{"scam_probability": <0.0~1.0 실수>, "reason": "<한국어 한 문장>"}'
+    "아래 신고 내용이 사칭 사기일 확률을 0.0~1.0 사이 실수로 판단한다. "
+    "설명·이유 없이 아래 JSON 한 줄만 출력하라.\n"
+    '{"scam_probability": <0.0~1.0 실수>}'
 )
 
 
@@ -56,10 +56,14 @@ async def _call_ollama(prompt: str) -> str | None:
         "prompt": prompt,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.0, "num_predict": 200},
+        "keep_alive": settings.ollama_keep_alive,
+        # 숫자 하나짜리 JSON만 받으므로 토큰을 짧게 제한해 추론 시간을 줄인다.
+        "options": {"temperature": 0.0, "num_predict": 32},
     }
+    # 연결은 빠르게 실패시키되(3초), 추론(read)에는 콜드스타트 여유를 준다.
+    timeout = httpx.Timeout(settings.ai_timeout_seconds, connect=3.0)
     try:
-        async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
         data = resp.json()
@@ -69,8 +73,28 @@ async def _call_ollama(prompt: str) -> str | None:
     return data.get("response")
 
 
-async def assess_scam_risk(
-    rule_score: int,
+async def warm_up() -> None:
+    """서버 기동 시 모델을 미리 메모리에 올려 첫 요청의 콜드스타트를 없앤다."""
+    if not settings.ai_enabled:
+        return
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
+    body = {
+        "model": settings.ollama_model,
+        "prompt": "ping",
+        "stream": False,
+        "keep_alive": settings.ollama_keep_alive,
+        "options": {"num_predict": 1},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:
+            resp = await client.post(url, json=body)
+            resp.raise_for_status()
+        logger.info("Ollama 모델 예열 완료: %s", settings.ollama_model)
+    except (httpx.HTTPError, ValueError) as e:
+        logger.warning("Ollama 예열 실패(무시하고 계속): %s", e)
+
+
+async def request_scam_assessment(
     *,
     claimed_org: str,
     claimed_person: str,
@@ -78,13 +102,17 @@ async def assess_scam_risk(
     target_business: str,
     law_name: str | None,
     has_account_number: bool,
-) -> GuardrailResult:
+) -> tuple[str | None, bool]:
     """
-    AI 사기 위험도 판정을 수행하고 가드레일까지 통과한 결과를 반환한다.
-    이 함수는 어떤 경우에도 예외를 밖으로 던지지 않는다(verify 흐름을 막지 않기 위해).
+    Ollama 원본 응답만 받아온다(가드레일 판정은 하지 않음).
+    프롬프트가 규칙 점수에 의존하지 않으므로, 공공데이터 대조와 '동시에' 실행하기 위해 분리했다.
+    이 함수는 어떤 경우에도 예외를 밖으로 던지지 않는다.
+
+    Returns:
+        (raw_response | None, model_available)
     """
     if not settings.ai_enabled:
-        return evaluate(None, rule_score, model_available=False)
+        return None, False
 
     try:
         prompt = build_prompt(
@@ -98,12 +126,21 @@ async def assess_scam_risk(
         raw = await _call_ollama(prompt)
     except Exception as e:  # 방어적: 예상 못 한 오류도 규칙 점수로 폴백
         logger.exception("AI 판정 중 예기치 못한 오류 — 규칙 점수로 폴백: %s", e)
-        return evaluate(None, rule_score, model_available=False)
+        return None, False
 
+    return raw, raw is not None
+
+
+def finalize_scam_assessment(
+    raw: str | None,
+    model_available: bool,
+    rule_score: int,
+) -> GuardrailResult:
+    """원본 응답 + 규칙 점수를 가드레일에 통과시켜 최종 AI 판정을 만든다."""
     result = evaluate(
         raw,
         rule_score,
-        model_available=raw is not None,
+        model_available=model_available,
         conflict_gap=settings.ai_conflict_gap,
     )
 
@@ -117,3 +154,25 @@ async def assess_scam_risk(
         )
 
     return result
+
+
+async def assess_scam_risk(
+    rule_score: int,
+    *,
+    claimed_org: str,
+    claimed_person: str,
+    claim_type: str,
+    target_business: str,
+    law_name: str | None,
+    has_account_number: bool,
+) -> GuardrailResult:
+    """AI 판정을 순차 실행하는 편의 래퍼(동시 실행이 필요 없는 호출부용)."""
+    raw, model_available = await request_scam_assessment(
+        claimed_org=claimed_org,
+        claimed_person=claimed_person,
+        claim_type=claim_type,
+        target_business=target_business,
+        law_name=law_name,
+        has_account_number=has_account_number,
+    )
+    return finalize_scam_assessment(raw, model_available, rule_score)

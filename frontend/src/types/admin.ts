@@ -14,6 +14,7 @@ export interface RiskLevelStats {
   safe: number;
   caution: number;
   danger: number;
+  unverified: number;
 }
 
 export interface AdminStatsResponse {
