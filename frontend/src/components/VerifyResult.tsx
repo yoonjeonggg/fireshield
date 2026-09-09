@@ -1,5 +1,5 @@
-import { ShieldCheck, AlertTriangle, ShieldAlert, Check, X } from "lucide-react";
-import { VerifyResponse, RiskLevel } from "@/types/verify";
+import { ShieldCheck, AlertTriangle, ShieldAlert, HelpCircle, Check, X, Sparkles } from "lucide-react";
+import { VerifyResponse, RiskLevel, AiAssessment } from "@/types/verify";
 
 type LevelStyle = {
   label: string;
@@ -43,11 +43,81 @@ const RISK_CONFIG: Record<RiskLevel, LevelStyle> = {
     chipColor: "var(--danger-600)",
     Icon: ShieldAlert,
   },
+  unverified: {
+    label: "판정 결과 · 확인 불가",
+    verdict: "판정 불가 — 직접 확인 필요",
+    headBg: "linear-gradient(120deg, var(--primary-700), var(--primary-500))",
+    headColor: "#fff",
+    barColor: "var(--primary-300)",
+    chipBg: "var(--primary-100)",
+    chipColor: "var(--primary-700)",
+    Icon: HelpCircle,
+  },
 };
+
+function aiBandColor(ai: AiAssessment): { fg: string; bg: string } {
+  if (ai.score === null || ai.score === undefined) {
+    return { fg: "var(--ink-400)", bg: "var(--paper-100)" };
+  }
+  if (ai.score >= 60) return { fg: "var(--danger-600)", bg: "var(--danger-100)" };
+  if (ai.score >= 30) return { fg: "var(--caution-600)", bg: "var(--caution-100)" };
+  return { fg: "var(--safe-600)", bg: "var(--safe-100)" };
+}
+
+function AiPanel({ ai }: { ai: AiAssessment }) {
+  const hasScore = ai.score !== null && ai.score !== undefined;
+  const band = aiBandColor(ai);
+
+  return (
+    <div
+      style={{
+        padding: "13px 15px",
+        borderRadius: 10,
+        background: "var(--paper-50)",
+        border: "1px solid var(--paper-200)",
+      }}
+    >
+      <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+        <Sparkles size={14} strokeWidth={2} color="var(--primary-500)" />
+        <span className="font-semibold" style={{ fontSize: 13, color: "var(--ink-950)" }}>
+          AI 사기 위험 분석
+        </span>
+        <span
+          className="font-semibold"
+          style={{
+            fontSize: 11,
+            padding: "2px 8px",
+            borderRadius: 999,
+            color: band.fg,
+            background: band.bg,
+          }}
+        >
+          {ai.label}
+        </span>
+        {hasScore && (
+          <span
+            className="ml-auto font-bold tabular-nums"
+            style={{ fontSize: 16, color: "var(--ink-950)" }}
+          >
+            {ai.score}
+            <span style={{ fontSize: 11, color: "var(--ink-400)", fontWeight: 400 }}> / 100</span>
+          </span>
+        )}
+      </div>
+      <div style={{ fontSize: 12.5, lineHeight: 1.55, color: "var(--ink-600)" }}>{ai.detail}</div>
+      <div style={{ fontSize: 11, color: "var(--ink-400)", marginTop: 6 }}>
+        {ai.used_in_verdict
+          ? "공공데이터 대조 결과와 함께 최종 판정에 반영되었습니다."
+          : "이번 분석은 참고용이며, 최종 판정은 공공데이터 대조 결과를 기준으로 합니다."}
+      </div>
+    </div>
+  );
+}
 
 export default function VerifyResult({ result }: { result: VerifyResponse }) {
   const config = RISK_CONFIG[result.risk_level];
   const Icon = config.Icon;
+  const unverified = result.risk_level === "unverified";
 
   return (
     <div
@@ -84,30 +154,70 @@ export default function VerifyResult({ result }: { result: VerifyResponse }) {
             {config.verdict}
           </div>
         </div>
-        <span className="ml-auto text-2xl font-bold opacity-90">{result.score}</span>
+        <span className="ml-auto text-2xl font-bold opacity-90">
+          {unverified ? "—" : result.score}
+        </span>
       </div>
 
       {/* 본문 */}
       <div style={{ padding: "22px 26px 26px" }}>
-        {/* 점수 바 */}
-        <div
-          style={{
-            height: 7,
-            borderRadius: 999,
-            background: "var(--paper-100)",
-            overflow: "hidden",
-            marginBottom: 18,
-          }}
-        >
+        {/* 점수 바 — 확인 불가일 때는 위험도를 표현하지 않는다 */}
+        {unverified ? (
           <div
             style={{
-              height: "100%",
-              width: `${result.score}%`,
-              background: config.barColor,
-              borderRadius: 999,
-              transition: "width .6s ease",
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "var(--primary-100)",
+              color: "var(--primary-700)",
+              fontSize: 12.5,
+              marginBottom: 18,
             }}
-          />
+          >
+            입력한 정보가 공공데이터와 대조되지 않아 위험도 점수를 산출하지 않았습니다.
+          </div>
+        ) : (
+          <div
+            style={{
+              height: 7,
+              borderRadius: 999,
+              background: "var(--paper-100)",
+              overflow: "hidden",
+              marginBottom: 18,
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${result.score}%`,
+                background: config.barColor,
+                borderRadius: 999,
+                transition: "width .6s ease",
+              }}
+            />
+          </div>
+        )}
+
+        {/* 규칙 점수 vs AI 점수 — 따로 표시 */}
+        <div className="flex flex-col gap-2.5" style={{ marginBottom: 14 }}>
+          <div
+            className="flex items-center gap-2"
+            style={{
+              padding: "12px 14px",
+              borderRadius: 10,
+              background: "var(--paper-50)",
+              border: "1px solid var(--paper-200)",
+            }}
+          >
+            <ShieldCheck size={14} strokeWidth={2} color="var(--ink-600)" />
+            <span className="font-medium" style={{ fontSize: 13, color: "var(--ink-950)" }}>
+              공공데이터 규칙 점수
+            </span>
+            <span className="ml-auto font-bold" style={{ fontSize: 16, color: "var(--ink-950)" }}>
+              {result.rule_score}
+              <span style={{ fontSize: 11, color: "var(--ink-400)" }}> /100</span>
+            </span>
+          </div>
+          {result.ai_assessment && <AiPanel ai={result.ai_assessment} />}
         </div>
 
         {/* 근거 목록 */}

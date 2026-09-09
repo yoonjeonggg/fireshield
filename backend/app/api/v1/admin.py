@@ -76,6 +76,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     safe_count = await count_by_level("safe")
     caution_count = await count_by_level("caution")
     danger_count = await count_by_level("danger")
+    unverified_count = await count_by_level("unverified")
 
     recent_result = await db.execute(
         select(VerifyLog).order_by(VerifyLog.created_at.desc()).limit(10)
@@ -84,7 +85,12 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
     return AdminStatsResponse(
         total_count=total,
-        risk_level_stats=RiskLevelStats(safe=safe_count, caution=caution_count, danger=danger_count),
+        risk_level_stats=RiskLevelStats(
+            safe=safe_count,
+            caution=caution_count,
+            danger=danger_count,
+            unverified=unverified_count,
+        ),
         recent_logs=[_to_summary(log) for log in recent_logs],
     )
 
