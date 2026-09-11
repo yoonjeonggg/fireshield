@@ -371,7 +371,7 @@ export default function VerifyForm() {
           </div>
         )}
 
-        {result && <VerifyResult result={result} />}
+        {result && <VerifyResult result={result} accountNumber={accountNumber.trim() || undefined} />}
       </div>
     </section>
   );

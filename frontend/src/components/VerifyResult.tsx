@@ -1,5 +1,21 @@
-import { ShieldCheck, AlertTriangle, ShieldAlert, Check, X } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { ShieldCheck, AlertTriangle, ShieldAlert, Check, X, ExternalLink, Copy } from "lucide-react";
 import { VerifyResponse, RiskLevel } from "@/types/verify";
+
+const OFFICIAL_ACCOUNT_LOOKUPS: { label: string; desc: string; href: string }[] = [
+  {
+    label: "경찰청 사이버사기 피해신고 이력조회",
+    desc: "최근 3개월간 3회 이상 신고된 계좌·전화번호와 대조",
+    href: "https://www.police.go.kr/www/security/cyber/cyber04.jsp",
+  },
+  {
+    label: "더치트(THE CHEAT) 사기 피해 조회",
+    desc: "민간 사기 피해 신고 데이터베이스 조회",
+    href: "https://thecheat.co.kr/rb/?mod=_search",
+  },
+];
 
 type LevelStyle = {
   label: string;
@@ -45,9 +61,27 @@ const RISK_CONFIG: Record<RiskLevel, LevelStyle> = {
   },
 };
 
-export default function VerifyResult({ result }: { result: VerifyResponse }) {
+export default function VerifyResult({
+  result,
+  accountNumber,
+}: {
+  result: VerifyResponse;
+  accountNumber?: string;
+}) {
   const config = RISK_CONFIG[result.risk_level];
   const Icon = config.Icon;
+  const [copied, setCopied] = useState(false);
+
+  async function copyAccount() {
+    if (!accountNumber) return;
+    try {
+      await navigator.clipboard.writeText(accountNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* 클립보드 접근 불가 시 무시 */
+    }
+  }
 
   return (
     <div
@@ -145,6 +179,63 @@ export default function VerifyResult({ result }: { result: VerifyResponse }) {
             </div>
           ))}
         </div>
+
+        {/* 계좌번호 사기 이력 공식 조회 안내 */}
+        {accountNumber && (
+          <div className="mt-4 pt-4" style={{ borderTop: "1px dashed var(--paper-200)" }}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="font-semibold" style={{ fontSize: 13, color: "var(--ink-800)" }}>
+                계좌번호 사기 이력 공식 조회
+              </p>
+              <button
+                type="button"
+                onClick={copyAccount}
+                className="inline-flex items-center gap-1"
+                style={{
+                  border: "1px solid var(--paper-200)",
+                  borderRadius: 7,
+                  background: "var(--paper-50)",
+                  padding: "4px 9px",
+                  fontSize: 12,
+                  color: "var(--ink-600)",
+                  cursor: "pointer",
+                }}
+              >
+                {copied ? <Check size={12} strokeWidth={3} /> : <Copy size={12} strokeWidth={2} />}
+                {copied ? "복사됨" : `${accountNumber} 복사`}
+              </button>
+            </div>
+            <p className="mt-1" style={{ fontSize: 12, color: "var(--ink-500)" }}>
+              FireShield 판정은 참고용입니다. 아래 공식 서비스에서 계좌번호를 직접 조회해 최종 확인하세요.
+            </p>
+            <div className="flex flex-col gap-2 mt-2.5">
+              {OFFICIAL_ACCOUNT_LOOKUPS.map((lk) => (
+                <a
+                  key={lk.href}
+                  href={lk.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3"
+                  style={{
+                    padding: "10px 13px",
+                    borderRadius: 10,
+                    background: "var(--paper-50)",
+                    border: "1px solid var(--paper-200)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <ExternalLink size={15} strokeWidth={2} style={{ color: "var(--ink-400)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13 }}>
+                    <span className="font-medium block" style={{ color: "var(--ink-950)" }}>
+                      {lk.label}
+                    </span>
+                    <span style={{ color: "var(--ink-500)", fontSize: 12 }}>{lk.desc}</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* 권고사항 */}
         <div className="mt-4 pt-4" style={{ borderTop: "1px dashed var(--paper-200)" }}>

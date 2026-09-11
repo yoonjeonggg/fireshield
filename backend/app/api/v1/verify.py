@@ -1,12 +1,13 @@
 from app.services.scam_patterns import detect_scam_phrases
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.crypto import encrypt
+from app.core.crypto import encrypt, account_fingerprint
 from app.core.database import get_db
 from app.models.verify_log import VerifyLog
 from app.schemas.verify import VerifyRequest, VerifyResponse, Evidence
 from app.services.law_api import check_recent_amendment, LawApiError
 from app.services.fire_business import find_business_by_name
+from app.services.fraud_account import get_fraud_account_provider
 
 router = APIRouter(prefix="/api/v1", tags=["verify"])
 
@@ -84,8 +85,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         )
         risk_signals.append((30, "소방시설업 등록 현황에 없는 업체명 언급"))
 
-
-        # --- 4. 사기 의심 문구 패턴 탐지 ---
+    # --- 4. 사기 의심 문구 패턴 탐지 ---
     combined_text = f"{payload.claim_type} {payload.law_name or ''}"
     matched_patterns = detect_scam_phrases(combined_text)
 
@@ -106,7 +106,11 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             matched=False,
         )
 
-            # --- 5. 계좌번호 요구 위험도 (다른 신호와 결합하여 가중치 계산) ---
+    # --- 5. 계좌번호 요구 위험도 (다른 신호와 결합하여 가중치 계산) ---
+    account_hash = account_fingerprint(payload.account_number)
+    fraud_result = await get_fraud_account_provider(db).check(account_hash)
+    fraud_evidence: Evidence | None = None
+
     if payload.account_number:
         has_scam_phrase = bool(matched_patterns)
         has_unregistered_business = not matched_businesses
@@ -132,6 +136,38 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             ),
             matched=has_scam_phrase or has_unregistered_business,
         )
+
+        # --- 5-1. 계좌 사기 신고 이력 조회 ---
+        if fraud_result.reported:
+            fraud_evidence = Evidence(
+                source="계좌번호 사기 신고 이력",
+                result=(
+                    f"최근 {fraud_result.window_days}일간 이 계좌로 "
+                    f"{fraud_result.report_count}건의 의심 신고가 접수되었습니다 "
+                    f"({fraud_result.source}) — 사기 계좌일 가능성이 매우 높습니다."
+                ),
+                matched=True,
+            )
+            risk_signals.append((
+                55,
+                f"반복 신고된 계좌 (최근 {fraud_result.window_days}일 {fraud_result.report_count}건)",
+            ))
+        elif fraud_result.checked:
+            fraud_evidence = Evidence(
+                source="계좌번호 사기 신고 이력",
+                result=(
+                    f"{fraud_result.source}에는 반복 접수 기록이 없습니다 "
+                    f"(최근 {fraud_result.window_days}일 {fraud_result.report_count}건). "
+                    "경찰청·더치트에서 직접 조회해 최종 확인하세요."
+                ),
+                matched=False,
+            )
+        else:
+            fraud_evidence = Evidence(
+                source="계좌번호 사기 신고 이력",
+                result="조회 수단이 없어 확인하지 못했습니다. 경찰청·더치트에서 직접 조회하세요.",
+                matched=False,
+            )
     else:
         account_evidence = Evidence(
             source="계좌번호 요구 위험도 분석",
@@ -139,7 +175,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             matched=False,
         )
 
-    # --- 5. 최종 점수 계산 ---
+    # --- 6. 최종 점수 계산 ---
     score = sum(points for points, _ in risk_signals)
     score = max(0, min(100, score))
 
@@ -154,6 +190,8 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         recommendation = "뚜렷한 위험 신호는 없으나, 금전이나 개인정보를 요구받았다면 기관에 재확인하세요."
 
     evidence = [law_evidence, biz_evidence, phrase_evidence, account_evidence]
+    if fraud_evidence is not None:
+        evidence.append(fraud_evidence)
 
     log = VerifyLog(
         claimed_org=payload.claimed_org,
@@ -161,6 +199,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         claim_type=payload.claim_type,
         target_business=payload.target_business,
         account_number=encrypt(payload.account_number),  # 암호화해서 저장
+        account_hash=account_hash,  # 같은 계좌 반복 신고 집계용 (단방향 해시)
         risk_level=risk_level,
         score=score,
     )
