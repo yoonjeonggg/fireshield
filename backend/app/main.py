@@ -9,6 +9,7 @@ from app.api.v1.risk_map import router as risk_map_router
 from app.services.ai_verify import warm_up as warm_up_ai
 import logging
 from app.api.v1.admin import router as admin_router
+from app.api.v1.public_stats import router as public_stats_router
 
 from app.api.v1.verify import router as verify_router
 from app.core.database import engine
@@ -82,6 +83,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(verify_router)
 app.include_router(risk_map_router)
 app.include_router(admin_router)
+app.include_router(public_stats_router)
 
 @app.get("/health")
 async def health():
