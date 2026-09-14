@@ -1,6 +1,7 @@
 import VerifyForm from "@/components/VerifyForm";
 import HowItWorks from "@/components/HowItWorks";
 import RiskMap from "@/components/RiskMap";
+import PublicStats from "@/components/PublicStats";
 import ReportCta from "@/components/ReportCta";
 import Footer from "@/components/Footer";
 
@@ -13,6 +14,9 @@ export default function Home() {
       <HowItWorks />
       <div id="risk-map">
         <RiskMap />
+      </div>
+      <div id="stats">
+        <PublicStats />
       </div>
       <ReportCta />
       <Footer />

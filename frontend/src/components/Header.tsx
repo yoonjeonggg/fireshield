@@ -46,6 +46,9 @@ export default function Header() {
 <a href="/#risk-map" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   위험지역 지도
 </a>
+<a href="/#stats" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+  실시간 통계
+</a>
         </nav>
       </div>
     </header>

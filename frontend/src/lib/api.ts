@@ -1,6 +1,7 @@
 import { VerifyRequest, VerifyResponse } from "@/types/verify";
 import { RiskMapResponse } from "@/types/riskMap";
 import { AdminStatsResponse } from "@/types/admin";
+import { PublicStatsResponse } from "@/types/publicStats";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -34,6 +35,16 @@ export async function fetchSigunguDetail(sido: string): Promise<SigunguDetailRes
 
   if (!res.ok) {
     throw new Error("시군구 상세 데이터를 불러오지 못했습니다.");
+  }
+
+  return res.json();
+}
+
+export async function fetchPublicStats(): Promise<PublicStatsResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/v1/public/stats`);
+
+  if (!res.ok) {
+    throw new Error("통계 데이터를 불러오지 못했습니다.");
   }
 
   return res.json();
