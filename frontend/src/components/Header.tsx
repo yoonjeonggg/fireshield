@@ -49,6 +49,9 @@ export default function Header() {
 <a href="/#stats" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   실시간 통계
 </a>
+<a href="/guide" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+  사기 유형 안내
+</a>
         </nav>
       </div>
     </header>
