@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Siren } from "lucide-react";
 
 export default function Header() {
@@ -13,7 +14,7 @@ export default function Header() {
       }}
     >
       <div className="max-w-[1120px] mx-auto px-5 h-16 flex items-center justify-between">
-        <a href="/" className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5">
           <span
             className="flex items-center justify-center shrink-0"
             style={{
@@ -37,21 +38,21 @@ export default function Header() {
               소방사칭 진위확인
             </span>
           </span>
-        </a>
+        </Link>
 
         <nav className="flex items-center gap-7">
-          <a href="/#verify" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+          <Link href="/#verify" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   진위확인
-</a>
-<a href="/#risk-map" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+</Link>
+<Link href="/#risk-map" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   위험지역 지도
-</a>
-<a href="/#stats" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+</Link>
+<Link href="/#stats" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   실시간 통계
-</a>
-<a href="/guide" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
+</Link>
+<Link href="/guide" className="text-sm font-medium" style={{ color: "var(--primary-500)" }}>
   사기 유형 안내
-</a>
+</Link>
         </nav>
       </div>
     </header>

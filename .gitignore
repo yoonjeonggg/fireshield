@@ -4,6 +4,7 @@ backend/**/__pycache__/
 backend/*.pyc
 backend/**/*.pyc
 backend/.env*
+!backend/.env.example
 backend/.venv/
 backend/*.log
 backend/**/*.log
@@ -31,6 +32,7 @@ frontend/build/
 
 # env files
 frontend/.env*
+!frontend/.env.example
 
 # vercel
 frontend/.vercel

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AlertTriangle, MapPin, MessageSquareWarning, ShieldAlert } from "lucide-react";
 
 const REAL_CASES = [
@@ -154,13 +155,13 @@ export default function ScamGuide() {
             송금 전에 FireShield로 발신 기관·계좌번호를 바로 대조해보세요.
           </p>
         </div>
-        <a
+        <Link
           href="/#verify"
           className="font-bold text-sm rounded-lg shrink-0"
           style={{ padding: "12px 22px", background: "var(--danger-500)", color: "#fff" }}
         >
           지금 진위확인하기
-        </a>
+        </Link>
       </div>
     </div>
   );

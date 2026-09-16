@@ -14,17 +14,17 @@ function riskColor(score: number): string {
 
 declare global {
   interface Window {
-    google: any;
+    google: typeof google;
     initFireShieldMap: () => void;
   }
 }
 
 export default function RiskMap({ compact = false }: { compact?: boolean }) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const infoWindowRef = useRef<any>(null);
-  const markersRef = useRef<Record<string, any>>({});
-  const boundsRef = useRef<any>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<Record<string, google.maps.Marker>>({});
+  const boundsRef = useRef<google.maps.LatLngBounds | null>(null);
 
   const [zones, setZones] = useState<RiskZone[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -105,13 +105,13 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
         });
 
         markersRef.current[zone.region_name] = marker;
-        bounds.extend(marker.getPosition());
+        bounds.extend({ lat: zone.lat, lng: zone.lng });
       });
 
       boundsRef.current = bounds;
       map.fitBounds(bounds);
       window.google.maps.event.addListenerOnce(map, "bounds_changed", () => {
-        if (map.getZoom() > 9) map.setZoom(9);
+        if ((map.getZoom() ?? 0) > 9) map.setZoom(9);
       });
     }
 
@@ -135,7 +135,6 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     script.setAttribute("data-fireshield-gmaps", "true");
     script.onerror = () => setError("구글 지도를 불러오지 못했습니다.");
     document.head.appendChild(script);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones]);
 
   async function handleSelectSido(zone: RiskZone) {
@@ -146,12 +145,12 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     if (map && marker) {
       map.panTo({ lat: zone.lat, lng: zone.lng });
       map.setZoom(10);
-      infoWindowRef.current.setContent(
+      infoWindowRef.current?.setContent(
         `<div style="font-family:sans-serif;font-size:13px;line-height:1.6;color:#141a24;">
            <b>${zone.region_name}</b><br>최근 3개월 신고 <b>${zone.report_count}건</b><br>${zone.main_targets}
          </div>`
       );
-      infoWindowRef.current.open(map, marker);
+      infoWindowRef.current?.open(map, marker);
     }
 
     setDrilldownSido(zone.region_name);
@@ -177,7 +176,7 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     infoWindowRef.current?.close();
     map.fitBounds(boundsRef.current);
     window.google.maps.event.addListenerOnce(map, "bounds_changed", () => {
-      if (map.getZoom() > 9) map.setZoom(9);
+      if ((map.getZoom() ?? 0) > 9) map.setZoom(9);
     });
   }
 
