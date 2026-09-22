@@ -179,7 +179,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         account_evidence = Evidence(
             source="계좌번호 요구 위험도 분석",
             result=(
-                f"계좌번호 요구가 확인되었습니다"
+                "계좌번호 요구가 확인되었습니다"
                 + (" (사기 의심 문구와 결합되어 위험도 상승)" if has_scam_phrase else "")
                 + (" (미등록 업체의 요구라 위험도 상승)" if has_unregistered_business else "")
             ),
