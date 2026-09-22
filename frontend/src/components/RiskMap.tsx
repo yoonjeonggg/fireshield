@@ -12,6 +12,28 @@ function riskColor(score: number): string {
   return "#2ea866";
 }
 
+const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
+  { elementType: "geometry", stylers: [{ color: "#1d3a5f" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#d6e2f0" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#0e2a47" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0a1f38" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#3a5b85" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#2a4a70" }] },
+  { featureType: "administrative.province", elementType: "geometry.stroke", stylers: [{ color: "#7ea3cc", weight: 1.2 }] },
+  { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#9fbde0", weight: 1.5 }] },
+  { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#24466e" }] },
+  { featureType: "poi", stylers: [{ visibility: "off" }] },
+];
+
+const MAX_AUTO_FIT_ZOOM = 9;
+
+function fitBoundsCapped(map: google.maps.Map, bounds: google.maps.LatLngBounds) {
+  map.fitBounds(bounds);
+  window.google.maps.event.addListenerOnce(map, "bounds_changed", () => {
+    if ((map.getZoom() ?? 0) > MAX_AUTO_FIT_ZOOM) map.setZoom(MAX_AUTO_FIT_ZOOM);
+  });
+}
+
 declare global {
   interface Window {
     google: typeof google;
@@ -53,28 +75,20 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     function initMap() {
       if (!mapRef.current) return;
 
-      const darkStyle = [
-        { elementType: "geometry", stylers: [{ color: "#1d3a5f" }] },
-        { elementType: "labels.text.fill", stylers: [{ color: "#d6e2f0" }] },
-        { elementType: "labels.text.stroke", stylers: [{ color: "#0e2a47" }] },
-        { featureType: "water", elementType: "geometry", stylers: [{ color: "#0a1f38" }] },
-        { featureType: "road", elementType: "geometry", stylers: [{ color: "#3a5b85" }] },
-        { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#2a4a70" }] },
-        { featureType: "administrative.province", elementType: "geometry.stroke", stylers: [{ color: "#7ea3cc", weight: 1.2 }] },
-        { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ color: "#9fbde0", weight: 1.5 }] },
-        { featureType: "landscape", elementType: "geometry", stylers: [{ color: "#24466e" }] },
-        { featureType: "poi", stylers: [{ visibility: "off" }] },
-      ];
-
       const map = new window.google.maps.Map(mapRef.current, {
         center: { lat: 36.2, lng: 127.9 },
         zoom: 7,
-        styles: darkStyle,
+        styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         zoomControl: true,
       });
       mapInstanceRef.current = map;
       infoWindowRef.current = new window.google.maps.InfoWindow();
+
+      for (const marker of Object.values(markersRef.current)) {
+        marker.setMap(null);
+      }
+      markersRef.current = {};
 
       const bounds = new window.google.maps.LatLngBounds();
       const maxCount = Math.max(...zones.map((z) => z.report_count), 1);
@@ -109,10 +123,7 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
       });
 
       boundsRef.current = bounds;
-      map.fitBounds(bounds);
-      window.google.maps.event.addListenerOnce(map, "bounds_changed", () => {
-        if ((map.getZoom() ?? 0) > 9) map.setZoom(9);
-      });
+      fitBoundsCapped(map, bounds);
     }
 
     if (window.google?.maps) {
@@ -174,10 +185,7 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     if (!map || !boundsRef.current) return;
 
     infoWindowRef.current?.close();
-    map.fitBounds(boundsRef.current);
-    window.google.maps.event.addListenerOnce(map, "bounds_changed", () => {
-      if ((map.getZoom() ?? 0) > 9) map.setZoom(9);
-    });
+    fitBoundsCapped(map, boundsRef.current);
   }
 
   if (loading) {
@@ -195,6 +203,8 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
       </div>
     );
   }
+
+  const maxSidoReportCount = zones[0]?.report_count || 1;
 
   return (
     <section className="max-w-[1120px] mx-auto px-5 py-16">
@@ -361,8 +371,7 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
   >
     {zones.map((zone, index) => {
       const isSelected = selectedRegion === zone.region_name;
-      const maxCount = zones[0]?.report_count || 1;
-      const barPct = Math.max(6, (zone.report_count / maxCount) * 100);
+      const barPct = Math.max(6, (zone.report_count / maxSidoReportCount) * 100);
       const rank = index + 1;
 
       return (

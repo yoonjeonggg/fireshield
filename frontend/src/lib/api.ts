@@ -1,5 +1,5 @@
 import { VerifyRequest, VerifyResponse } from "@/types/verify";
-import { RiskMapResponse } from "@/types/riskMap";
+import { RiskMapResponse, SigunguDetailResponse } from "@/types/riskMap";
 import { AdminStatsResponse } from "@/types/admin";
 import { PublicStatsResponse } from "@/types/publicStats";
 
@@ -28,7 +28,7 @@ export async function fetchRiskMap(): Promise<RiskMapResponse> {
   }
 
   return res.json();
-}import { SigunguDetailResponse } from "@/types/riskMap";
+}
 
 export async function fetchSigunguDetail(sido: string): Promise<SigunguDetailResponse> {
   const res = await fetch(`${API_BASE_URL}/api/v1/risk-map/${encodeURIComponent(sido)}`);
