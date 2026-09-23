@@ -7,6 +7,7 @@ import asyncio
 from sqlalchemy import text
 from app.api.v1.risk_map import router as risk_map_router
 from app.services.ai_verify import warm_up as warm_up_ai
+from app.services.risk_data import warm_up as warm_up_risk_data
 import logging
 from app.api.v1.admin import router as admin_router
 from app.api.v1.public_stats import router as public_stats_router
@@ -34,8 +35,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(text(f"ALTER TABLE verify_logs {column_ddl}"))
     # 첫 요청의 콜드스타트를 피하려고 백그라운드로 모델 예열 (실패해도 무시)
     warm_task = asyncio.create_task(warm_up_ai())
+    # 위험지역 CSV 파싱/집계(수백 ms)도 스레드에서 미리 끝내 첫 지도 요청이 기다리지 않게 한다
+    risk_warm_task = asyncio.create_task(asyncio.to_thread(warm_up_risk_data))
     yield
     warm_task.cancel()
+    risk_warm_task.cancel()
 
 
 app = FastAPI(title="FireShield API", lifespan=lifespan)

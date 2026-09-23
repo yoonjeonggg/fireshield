@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { fetchRiskMap, fetchSigunguDetail } from "@/lib/api";
 import { RiskZone, SigunguDetail } from "@/types/riskMap";
@@ -34,6 +35,27 @@ function fitBoundsCapped(map: google.maps.Map, bounds: google.maps.LatLngBounds)
   });
 }
 
+// 지역명/업종 문자열을 HTML로 끼워 넣지 않도록 DOM 노드로 InfoWindow 내용을 만든다
+function buildInfoWindowContent(zone: RiskZone): HTMLElement {
+  const root = document.createElement("div");
+  root.style.cssText = "font-family:sans-serif;font-size:13px;line-height:1.6;color:#141a24;";
+
+  const title = document.createElement("b");
+  title.textContent = zone.region_name;
+  const count = document.createElement("b");
+  count.textContent = `${zone.report_count}건`;
+
+  root.append(
+    title,
+    document.createElement("br"),
+    "최근 3개월 신고 ",
+    count,
+    document.createElement("br"),
+    zone.main_targets
+  );
+  return root;
+}
+
 declare global {
   interface Window {
     google: typeof google;
@@ -57,6 +79,12 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
   const [drilldownSido, setDrilldownSido] = useState<string | null>(null);
   const [sigunguItems, setSigunguItems] = useState<SigunguDetail[]>([]);
   const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [drilldownError, setDrilldownError] = useState<string | null>(null);
+
+  // 시군구 데이터는 정적이므로 한 번 받은 시도는 재클릭 시 네트워크 없이 재사용한다
+  const sigunguCacheRef = useRef<Map<string, SigunguDetail[]>>(new Map());
+  // 빠르게 여러 시도를 클릭했을 때 늦게 도착한 이전 응답이 화면을 덮어쓰지 않도록 최신 요청만 반영한다
+  const latestDrilldownRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetchRiskMap()
@@ -156,30 +184,45 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
     if (map && marker) {
       map.panTo({ lat: zone.lat, lng: zone.lng });
       map.setZoom(10);
-      infoWindowRef.current?.setContent(
-        `<div style="font-family:sans-serif;font-size:13px;line-height:1.6;color:#141a24;">
-           <b>${zone.region_name}</b><br>최근 3개월 신고 <b>${zone.report_count}건</b><br>${zone.main_targets}
-         </div>`
-      );
+      infoWindowRef.current?.setContent(buildInfoWindowContent(zone));
       infoWindowRef.current?.open(map, marker);
     }
 
-    setDrilldownSido(zone.region_name);
+    const sido = zone.region_name;
+    latestDrilldownRef.current = sido;
+    setDrilldownSido(sido);
+    setDrilldownError(null);
+
+    const cached = sigunguCacheRef.current.get(sido);
+    if (cached) {
+      setSigunguItems(cached);
+      setDrilldownLoading(false);
+      return;
+    }
+
+    setSigunguItems([]);
     setDrilldownLoading(true);
     try {
-      const detail = await fetchSigunguDetail(zone.region_name);
+      const detail = await fetchSigunguDetail(sido);
+      sigunguCacheRef.current.set(sido, detail.items);
+      if (latestDrilldownRef.current !== sido) return;
       setSigunguItems(detail.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "시군구 데이터를 불러오지 못했습니다.");
+      if (latestDrilldownRef.current !== sido) return;
+      // 드릴다운 실패로 지도 전체를 에러 화면으로 바꾸지 않고 패널 안에서만 알린다
+      setDrilldownError(err instanceof Error ? err.message : "시군구 데이터를 불러오지 못했습니다.");
     } finally {
-      setDrilldownLoading(false);
+      if (latestDrilldownRef.current === sido) setDrilldownLoading(false);
     }
   }
 
   function handleResetView() {
+    latestDrilldownRef.current = null;
     setSelectedRegion(null);
     setDrilldownSido(null);
     setSigunguItems([]);
+    setDrilldownError(null);
+    setDrilldownLoading(false);
 
     const map = mapInstanceRef.current;
     if (!map || !boundsRef.current) return;
@@ -220,13 +263,13 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
           출처: 소방청 전국 화재 현황(2025) · 시도 단위 집계, 좌표는 시/도청 소재지 기준
         </p>
         {compact && (
-          <a 
+          <Link
             href="/risk-map"
             className="inline-block mt-3 text-sm font-semibold"
             style={{ color: "var(--primary-500)" }}
           >
             전체 지도 자세히 보기 →
-          </a>
+          </Link>
         )}
       </div>
 
@@ -332,6 +375,10 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
               {drilldownLoading ? (
                 <div className="text-sm py-6 text-center" style={{ color: "var(--ink-400)" }}>
                   불러오는 중...
+                </div>
+              ) : drilldownError ? (
+                <div className="text-sm py-6 text-center" style={{ color: "var(--danger-600)" }}>
+                  {drilldownError}
                 </div>
               ) : (
                 sigunguItems.map((item) => (

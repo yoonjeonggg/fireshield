@@ -42,10 +42,6 @@ SIDO_NAME_ALIASES = {
 }
 
 
-def _normalize_sido(name: str) -> str:
-    return SIDO_NAME_ALIASES.get(name, name)
-
-
 def _minmax_score(raw_score: pd.Series) -> pd.Series:
     """원점수를 0~100 구간으로 정규화합니다 (편차가 없으면 전부 0점)."""
     score_range = raw_score.max() - raw_score.min()
@@ -66,15 +62,13 @@ def _load_recent_fire_df() -> pd.DataFrame:
         encoding="utf-8-sig",
         usecols=["wrinv_no", "dth_cnt", "rcpt_dt", "ctpv_nm", "sgg_nm"],
     )
-    df["rcpt_date"] = pd.to_datetime(
-        df["rcpt_dt"].astype(str).str[:8], format="%Y%m%d", errors="coerce"
+    # rcpt_dt는 YYYYMMDDhhmmss 정수 — 문자열 변환 없이 정수 나눗셈으로 날짜부만 취한다
+    rcpt_date = pd.to_datetime(
+        df["rcpt_dt"] // 1_000_000, format="%Y%m%d", errors="coerce"
     )
-
-    latest_date = df["rcpt_date"].max()
-    cutoff = latest_date - timedelta(days=90)
-    df = df[df["rcpt_date"] >= cutoff].copy()
-    df["sido"] = df["ctpv_nm"].apply(_normalize_sido)
-    return df
+    cutoff = rcpt_date.max() - timedelta(days=90)
+    df = df[rcpt_date >= cutoff]
+    return df.assign(sido=df["ctpv_nm"].replace(SIDO_NAME_ALIASES))
 
 
 @cache
@@ -85,31 +79,41 @@ def _load_business_df() -> pd.DataFrame:
         encoding="utf-8-sig",
         usecols=["USE_YN", "CONM_ADDR", "TPBIZ_NM"],
     )
-    df = df[df["USE_YN"] == "Y"].copy()
-    df["sido"] = df["CONM_ADDR"].str.extract(r"^(\S+)")[0].apply(_normalize_sido)
-    return df
+    df = df[df["USE_YN"] == "Y"]
+    sido = df["CONM_ADDR"].str.extract(r"^(\S+)")[0].replace(SIDO_NAME_ALIASES)
+    return df.assign(sido=sido)
+
+
+@cache
+def _sigungu_index() -> dict[str, tuple[tuple[str, int, float], ...]]:
+    """전 시도의 시군구별 집계를 한 번의 groupby로 계산해 시도명 → 결과로 캐시합니다.
+
+    결과는 정적 데이터에서 결정적으로 나오므로 요청마다 필터/groupby를 반복할 필요가 없다.
+    캐시가 공유되므로 호출자가 변경할 수 없도록 튜플로 보관한다.
+    """
+    agg = (
+        _load_recent_fire_df()
+        .groupby(["sido", "sgg_nm"])
+        .agg(fire_count=("wrinv_no", "count"), death_count=("dth_cnt", "sum"))
+        .reset_index()
+    )
+
+    index = {}
+    for sido, group in agg.groupby("sido"):
+        group = group.sort_values("fire_count", ascending=False)
+        scores = _minmax_score(group["fire_count"] + group["death_count"] * 30)
+        index[sido] = tuple(
+            (name, int(count), float(score))
+            for name, count, score in zip(group["sgg_nm"], group["fire_count"], scores)
+        )
+    return index
 
 
 def load_sigungu_zones(sido: str) -> list[dict]:
     """특정 시도 내 시군구별 화재 집계를 반환합니다 (좌표 없이 건수만)."""
-    df = _load_recent_fire_df()
-    df = df[df["sido"] == sido]
-
-    agg = (
-        df.groupby("sgg_nm")
-        .agg(fire_count=("wrinv_no", "count"), death_count=("dth_cnt", "sum"))
-        .reset_index()
-        .sort_values("fire_count", ascending=False)
-    )
-    agg["risk_score"] = _minmax_score(agg["fire_count"] + agg["death_count"] * 30)
-
     return [
-        {
-            "sigungu_name": row["sgg_nm"],
-            "report_count": int(row["fire_count"]),
-            "risk_score": float(row["risk_score"]),
-        }
-        for _, row in agg.iterrows()
+        {"sigungu_name": name, "report_count": count, "risk_score": score}
+        for name, count, score in _sigungu_index().get(sido, ())
     ]
 
 
@@ -146,6 +150,12 @@ def load_risk_zones() -> list[dict]:
     화재현황 + 다중이용업소현황을 시도 단위로 결합하여 위험지역 데이터를 반환합니다.
     좌표는 시/도청 소재지 기준이며, 실제 사건 발생 지점과는 다를 수 있습니다.
     """
+    return [dict(zone) for zone in _risk_zones()]
+
+
+@cache
+def _risk_zones() -> tuple[dict, ...]:
+    """시도 단위 위험지역 집계 (정적 데이터라 1회 계산 후 캐시)."""
     fire_agg = _load_fire_agg()
     biz_agg = _load_business_agg()
 
@@ -161,21 +171,26 @@ def load_risk_zones() -> list[dict]:
     )
 
     zones = []
-    for _, row in merged.iterrows():
-        sido = row["sido"]
-        if sido not in SIDO_COORDS:
+    for row in merged.itertuples(index=False):
+        if row.sido not in SIDO_COORDS:
             continue
-        lat, lng = SIDO_COORDS[sido]
+        lat, lng = SIDO_COORDS[row.sido]
         zones.append(
             {
-                "region_name": sido,
+                "region_name": row.sido,
                 "lat": lat,
                 "lng": lng,
-                "risk_score": float(row["risk_score"]),
-                "report_count": int(row["fire_count"]),
-                "main_targets": f"{row['main_target']} 등 다중이용업소 {int(row['business_count'])}곳",
+                "risk_score": float(row.risk_score),
+                "report_count": int(row.fire_count),
+                "main_targets": f"{row.main_target} 등 다중이용업소 {int(row.business_count)}곳",
             }
         )
 
     zones.sort(key=lambda z: z["report_count"], reverse=True)
-    return zones
+    return tuple(zones)
+
+
+def warm_up() -> None:
+    """기동 시 CSV 파싱과 집계를 미리 끝내 첫 요청의 콜드스타트를 없앱니다."""
+    _risk_zones()
+    _sigungu_index()
