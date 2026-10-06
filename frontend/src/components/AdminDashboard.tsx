@@ -3,13 +3,8 @@
 import { useState } from "react";
 import { fetchAdminStats } from "@/lib/api";
 import { AdminStatsResponse } from "@/types/admin";
-
-const RISK_LABELS: Record<string, { label: string; color: string }> = {
-  safe: { label: "안전", color: "var(--safe-600)" },
-  caution: { label: "의심", color: "var(--caution-600)" },
-  danger: { label: "위험", color: "var(--danger-600)" },
-  unverified: { label: "확인 불가", color: "var(--primary-700)" },
-};
+import { RISK_LEVEL_META, RiskLevel } from "@/lib/riskLevel";
+import RiskLevelStatCards from "@/components/RiskLevelStatCards";
 
 export default function AdminDashboard() {
   const [adminKey, setAdminKey] = useState("");
@@ -109,13 +104,7 @@ export default function AdminDashboard() {
       {stats && (
         <>
           {/* 통계 카드 */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
-            <StatCard label="전체 조회" value={stats.total_count} color="var(--ink-950)" />
-            <StatCard label="안전" value={stats.risk_level_stats.safe} color="var(--safe-600)" />
-            <StatCard label="의심" value={stats.risk_level_stats.caution} color="var(--caution-600)" />
-            <StatCard label="위험" value={stats.risk_level_stats.danger} color="var(--danger-600)" />
-            <StatCard label="확인 불가" value={stats.risk_level_stats.unverified} color="var(--primary-700)" />
-          </div>
+          <RiskLevelStatCards total={stats.total_count} stats={stats.risk_level_stats} className="mb-10" />
 
           {/* 최근 로그 테이블 */}
           <h2 className="text-lg font-bold mb-3" style={{ color: "var(--ink-950)" }}>
@@ -137,7 +126,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody>
                 {stats.recent_logs.map((log) => {
-                  const risk = log.risk_level ? RISK_LABELS[log.risk_level] : null;
+                  const risk = log.risk_level ? RISK_LEVEL_META[log.risk_level as RiskLevel] : undefined;
                   return (
                     <tr key={log.id} style={{ borderTop: "1px solid var(--paper-100)" }}>
                       <Td>{new Date(log.created_at).toLocaleString("ko-KR")}</Td>
@@ -162,22 +151,6 @@ export default function AdminDashboard() {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div
-      className="p-4 rounded-xl"
-      style={{ background: "var(--white)", border: "1px solid var(--paper-200)" }}
-    >
-      <div className="text-xs mb-1" style={{ color: "var(--ink-600)" }}>
-        {label}
-      </div>
-      <div className="text-2xl font-bold" style={{ color, fontFamily: "var(--font-head)" }}>
-        {value}
-      </div>
     </div>
   );
 }

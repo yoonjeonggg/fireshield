@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { fetchPublicStats } from "@/lib/api";
 import { PublicStatsResponse } from "@/types/publicStats";
+import { RISK_LEVEL_META, RISK_LEVELS } from "@/lib/riskLevel";
+import RiskLevelStatCards from "@/components/RiskLevelStatCards";
 
 function formatDay(dateStr: string) {
   const [, m, d] = dateStr.split("-");
@@ -49,13 +51,7 @@ export default function PublicStats() {
       {stats && (
         <>
           {/* 통계 카드 */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-12">
-            <StatCard label="전체 조회" value={stats.total_count} color="var(--ink-950)" />
-            <StatCard label="안전" value={stats.risk_level_stats.safe} color="var(--safe-600)" />
-            <StatCard label="의심" value={stats.risk_level_stats.caution} color="var(--caution-600)" />
-            <StatCard label="위험" value={stats.risk_level_stats.danger} color="var(--danger-600)" />
-            <StatCard label="확인 불가" value={stats.risk_level_stats.unverified} color="var(--primary-700)" />
-          </div>
+          <RiskLevelStatCards total={stats.total_count} stats={stats.risk_level_stats} className="mb-12" />
 
           {/* 최근 14일 추이 */}
           <section className="mb-12">
@@ -158,19 +154,6 @@ export default function PublicStats() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="p-4 rounded-xl" style={{ background: "var(--white)", border: "1px solid var(--paper-200)" }}>
-      <div className="text-xs mb-1" style={{ color: "var(--ink-600)" }}>
-        {label}
-      </div>
-      <div className="text-2xl font-bold" style={{ color, fontFamily: "var(--font-head)" }}>
-        {value.toLocaleString("ko-KR")}
-      </div>
-    </div>
-  );
-}
-
 function Legend({ items }: { items: { label: string; color: string }[] }) {
   return (
     <div className="flex items-center gap-4">
@@ -213,10 +196,14 @@ function TrendChart({
               {formatDay(selected.date)}
             </span>
             <BreakdownItem label="전체" value={selected.total} color="var(--ink-950)" />
-            <BreakdownItem label="안전" value={selected.safe} color="var(--safe-600)" />
-            <BreakdownItem label="의심" value={selected.caution} color="var(--caution-600)" />
-            <BreakdownItem label="위험" value={selected.danger} color="var(--danger-600)" />
-            <BreakdownItem label="확인 불가" value={selected.unverified} color="var(--primary-700)" />
+            {RISK_LEVELS.map((level) => (
+              <BreakdownItem
+                key={level}
+                label={RISK_LEVEL_META[level].label}
+                value={selected[level]}
+                color={RISK_LEVEL_META[level].color}
+              />
+            ))}
           </>
         ) : (
           <span>-</span>

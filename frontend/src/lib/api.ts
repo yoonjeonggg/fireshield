@@ -5,6 +5,16 @@ import { PublicStatsResponse } from "@/types/publicStats";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
+async function requestJson<T>(path: string, errorMessage: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE_URL}${path}`, init);
+
+  if (!res.ok) {
+    throw new Error(errorMessage);
+  }
+
+  return res.json();
+}
+
 export async function verifyRequest(payload: VerifyRequest): Promise<VerifyResponse> {
   const res = await fetch(`${API_BASE_URL}/api/v1/verify`, {
     method: "POST",
@@ -20,34 +30,19 @@ export async function verifyRequest(payload: VerifyRequest): Promise<VerifyRespo
   return res.json();
 }
 
-export async function fetchRiskMap(): Promise<RiskMapResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/risk-map`);
-
-  if (!res.ok) {
-    throw new Error("위험지역 데이터를 불러오지 못했습니다.");
-  }
-
-  return res.json();
+export function fetchRiskMap(): Promise<RiskMapResponse> {
+  return requestJson("/api/v1/risk-map", "위험지역 데이터를 불러오지 못했습니다.");
 }
 
-export async function fetchSigunguDetail(sido: string): Promise<SigunguDetailResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/risk-map/${encodeURIComponent(sido)}`);
-
-  if (!res.ok) {
-    throw new Error("시군구 상세 데이터를 불러오지 못했습니다.");
-  }
-
-  return res.json();
+export function fetchSigunguDetail(sido: string): Promise<SigunguDetailResponse> {
+  return requestJson(
+    `/api/v1/risk-map/${encodeURIComponent(sido)}`,
+    "시군구 상세 데이터를 불러오지 못했습니다.",
+  );
 }
 
-export async function fetchPublicStats(): Promise<PublicStatsResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/public/stats`);
-
-  if (!res.ok) {
-    throw new Error("통계 데이터를 불러오지 못했습니다.");
-  }
-
-  return res.json();
+export function fetchPublicStats(): Promise<PublicStatsResponse> {
+  return requestJson("/api/v1/public/stats", "통계 데이터를 불러오지 못했습니다.");
 }
 
 export async function fetchAdminStats(adminKey: string): Promise<AdminStatsResponse> {

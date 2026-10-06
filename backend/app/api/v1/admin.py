@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.blacklist import BlacklistEntry
+from app.services.verify_stats import get_verify_log_totals
 from app.schemas.blacklist import BlacklistCreateRequest, BlacklistEntryResponse, BlacklistListResponse
 from app.core.database import get_db
 from app.core.admin_auth import verify_admin_key
@@ -12,7 +13,6 @@ from app.schemas.admin import (
     VerifyLogListResponse,
     VerifyLogSummary,
     AdminStatsResponse,
-    RiskLevelStats,
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(verify_admin_key)])
@@ -29,6 +29,16 @@ def _to_summary(log: VerifyLog) -> VerifyLogSummary:
         risk_level=log.risk_level,
         score=log.score,
         created_at=log.created_at,
+    )
+
+
+def _to_entry(entry: BlacklistEntry) -> BlacklistEntryResponse:
+    return BlacklistEntryResponse(
+        id=str(entry.id),
+        entry_type=entry.entry_type,
+        name=entry.name,
+        reason=entry.reason,
+        created_at=entry.created_at,
     )
 
 
@@ -64,19 +74,7 @@ async def list_verify_logs(
     description="위험도별 건수와 최근 로그 10건을 반환합니다. `X-Admin-Key` 헤더 필요.",
 )
 async def get_stats(db: AsyncSession = Depends(get_db)):
-    total_result = await db.execute(select(func.count()).select_from(VerifyLog))
-    total = total_result.scalar_one()
-
-    async def count_by_level(level: str) -> int:
-        result = await db.execute(
-            select(func.count()).select_from(VerifyLog).where(VerifyLog.risk_level == level)
-        )
-        return result.scalar_one()
-
-    safe_count = await count_by_level("safe")
-    caution_count = await count_by_level("caution")
-    danger_count = await count_by_level("danger")
-    unverified_count = await count_by_level("unverified")
+    total, risk_level_stats = await get_verify_log_totals(db)
 
     recent_result = await db.execute(
         select(VerifyLog).order_by(VerifyLog.created_at.desc()).limit(10)
@@ -85,14 +83,10 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 
     return AdminStatsResponse(
         total_count=total,
-        risk_level_stats=RiskLevelStats(
-            safe=safe_count,
-            caution=caution_count,
-            danger=danger_count,
-            unverified=unverified_count,
-        ),
+        risk_level_stats=risk_level_stats,
         recent_logs=[_to_summary(log) for log in recent_logs],
     )
+
 
 @router.get(
     "/blacklist",
@@ -102,18 +96,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
 async def list_blacklist(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(BlacklistEntry).order_by(BlacklistEntry.created_at.desc()))
     items = result.scalars().all()
-    return BlacklistListResponse(
-        items=[
-            BlacklistEntryResponse(
-                id=str(item.id),
-                entry_type=item.entry_type,
-                name=item.name,
-                reason=item.reason,
-                created_at=item.created_at,
-            )
-            for item in items
-        ]
-    )
+    return BlacklistListResponse(items=[_to_entry(item) for item in items])
 
 
 @router.post(
@@ -130,13 +113,7 @@ async def create_blacklist_entry(payload: BlacklistCreateRequest, db: AsyncSessi
     db.add(entry)
     await db.commit()
     await db.refresh(entry)
-    return BlacklistEntryResponse(
-        id=str(entry.id),
-        entry_type=entry.entry_type,
-        name=entry.name,
-        reason=entry.reason,
-        created_at=entry.created_at,
-    )
+    return _to_entry(entry)
 
 
 @router.delete(

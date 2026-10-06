@@ -6,13 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.verify_log import VerifyLog
-from app.schemas.admin import RiskLevelStats
 from app.schemas.public_stats import (
     DailyTrendPoint,
     PublicStatsResponse,
     RecentAlert,
     TopClaimedOrg,
 )
+from app.services.verify_stats import get_verify_log_totals
 
 router = APIRouter(prefix="/api/v1/public", tags=["public"])
 
@@ -26,21 +26,7 @@ TREND_DAYS = 14
     description="누구나 조회 가능한 집계 통계입니다. 계좌번호·담당자명·대상 업체명 등 개인정보는 노출하지 않습니다.",
 )
 async def get_public_stats(db: AsyncSession = Depends(get_db)):
-    total_result = await db.execute(select(func.count()).select_from(VerifyLog))
-    total = total_result.scalar_one()
-
-    async def count_by_level(level: str) -> int:
-        result = await db.execute(
-            select(func.count()).select_from(VerifyLog).where(VerifyLog.risk_level == level)
-        )
-        return result.scalar_one()
-
-    risk_level_stats = RiskLevelStats(
-        safe=await count_by_level("safe"),
-        caution=await count_by_level("caution"),
-        danger=await count_by_level("danger"),
-        unverified=await count_by_level("unverified"),
-    )
+    total, risk_level_stats = await get_verify_log_totals(db)
 
     since = date.today() - timedelta(days=TREND_DAYS - 1)
     day_col = func.date(VerifyLog.created_at)

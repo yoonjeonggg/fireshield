@@ -16,6 +16,15 @@ from app.services.ai_verify import request_scam_assessment, finalize_scam_assess
 router = APIRouter(prefix="/api/v1", tags=["verify"])
 
 
+def _grade(score: int) -> tuple[str, str]:
+    """최종 점수를 위험도와 사용자 권고 문구로 변환한다."""
+    if score >= 60:
+        return "danger", "매우 위험합니다. 요구에 응하지 마시고 관할 소방서 또는 112에 즉시 신고하세요."
+    if score >= 30:
+        return "caution", "의심스러운 정황이 있습니다. 관할 소방서에 직접 전화하여 사실 여부를 확인하세요."
+    return "safe", "뚜렷한 위험 신호는 없으나, 금전이나 개인정보를 요구받았다면 기관에 재확인하세요."
+
+
 @router.post(
     "/verify",
     response_model=VerifyResponse,
@@ -279,15 +288,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         if ai_result.used_in_verdict and ai_result.score is not None:
             score = max(rule_score, ai_result.score)
 
-        if score >= 60:
-            risk_level = "danger"
-            recommendation = "매우 위험합니다. 요구에 응하지 마시고 관할 소방서 또는 112에 즉시 신고하세요."
-        elif score >= 30:
-            risk_level = "caution"
-            recommendation = "의심스러운 정황이 있습니다. 관할 소방서에 직접 전화하여 사실 여부를 확인하세요."
-        else:
-            risk_level = "safe"
-            recommendation = "뚜렷한 위험 신호는 없으나, 금전이나 개인정보를 요구받았다면 기관에 재확인하세요."
+        risk_level, recommendation = _grade(score)
 
     evidence = [blacklist_evidence, law_evidence, biz_evidence, phrase_evidence, account_evidence]
     if fraud_evidence is not None:
