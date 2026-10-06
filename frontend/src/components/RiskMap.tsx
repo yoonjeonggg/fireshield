@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { fetchRiskMap, fetchSigunguDetail } from "@/lib/api";
 import { RiskZone, SigunguDetail } from "@/types/riskMap";
@@ -63,7 +62,7 @@ declare global {
   }
 }
 
-export default function RiskMap({ compact = false }: { compact?: boolean }) {
+export default function RiskMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
@@ -262,15 +261,6 @@ export default function RiskMap({ compact = false }: { compact?: boolean }) {
         <p className="mt-1 text-xs" style={{ color: "var(--ink-400)" }}>
           출처: 소방청 전국 화재 현황(2025) · 시도 단위 집계, 좌표는 시/도청 소재지 기준
         </p>
-        {compact && (
-          <Link
-            href="/risk-map"
-            className="inline-block mt-3 text-sm font-semibold"
-            style={{ color: "var(--primary-500)" }}
-          >
-            전체 지도 자세히 보기 →
-          </Link>
-        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6 items-start">
