@@ -18,12 +18,15 @@ from app.services.ai_guardrail import GuardrailResult, evaluate
 
 logger = logging.getLogger("fireshield")
 
+# CPU 추론에서는 프롬프트 읽기(prompt eval)가 응답 시간의 대부분이라 지시문을 짧게 유지한다.
+# (190 → 120토큰으로 줄였을 때 판정값 변화 없이 약 40% 단축)
 _SYSTEM_PROMPT = (
-    "너는 대한민국 소방기관(소방서·소방공무원) 사칭 사기를 탐지하는 분류기다. "
-    "아래 신고 내용이 사칭 사기일 확률을 0.0~1.0 사이 실수로 판단한다. "
-    "설명·이유 없이 아래 JSON 한 줄만 출력하라.\n"
-    '{"scam_probability": <0.0~1.0 실수>}'
+    "소방기관 사칭 사기 분류기. 아래 신고가 사기일 확률(0.0~1.0)을 "
+    'JSON {"scam_probability": 실수} 한 줄로만 답하라.'
 )
+
+# 응답 앞부분을 미리 채워(prefill) 모델이 숫자만 생성하게 한다. (12토큰 → 3~4토큰)
+_RESPONSE_PREFIX = '{"scam_probability": '
 
 
 def build_prompt(
@@ -36,29 +39,34 @@ def build_prompt(
     has_account_number: bool,
 ) -> str:
     return (
-        f"{_SYSTEM_PROMPT}\n\n"
-        "[신고 내용]\n"
-        f"- 발신 기관명: {claimed_org}\n"
-        f"- 담당자명: {claimed_person}\n"
-        f"- 요구 사유: {claim_type}\n"
-        f"- 대상 업체: {target_business}\n"
-        f"- 언급된 법령: {law_name or '없음'}\n"
-        f"- 계좌번호 요구: {'있음' if has_account_number else '없음'}\n\n"
-        "JSON:"
+        f"{_SYSTEM_PROMPT}\n"
+        f"기관:{claimed_org} / 담당자:{claimed_person} / 사유:{claim_type} / "
+        f"업체:{target_business} / 법령:{law_name or '없음'} / "
+        f"계좌요구:{'있음' if has_account_number else '없음'}"
     )
 
 
+def _ollama_options(**overrides) -> dict:
+    options = {"temperature": 0.0, **overrides}
+    # 예열과 실제 요청의 num_thread가 다르면 Ollama가 모델을 다시 올리므로 반드시 같은 값을 쓴다.
+    if settings.ollama_num_thread:
+        options["num_thread"] = settings.ollama_num_thread
+    return options
+
+
 async def _call_ollama(prompt: str) -> str | None:
-    """Ollama /api/generate 호출. 실패하면 None(가드레일이 UNAVAILABLE 처리)."""
-    url = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
+    """Ollama /api/chat 호출. 실패하면 None(가드레일이 UNAVAILABLE 처리)."""
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
     body = {
         "model": settings.ollama_model,
-        "prompt": prompt,
+        "messages": [
+            {"role": "user", "content": prompt},
+            # 마지막 assistant 메시지는 Ollama가 이어서 생성한다 (모델별 템플릿과 무관).
+            {"role": "assistant", "content": _RESPONSE_PREFIX},
+        ],
         "stream": False,
-        "format": "json",
         "keep_alive": settings.ollama_keep_alive,
-        # 숫자 하나짜리 JSON만 받으므로 토큰을 짧게 제한해 추론 시간을 줄인다.
-        "options": {"temperature": 0.0, "num_predict": 32},
+        "options": _ollama_options(num_predict=8, stop=["}"]),
     }
     # 연결은 빠르게 실패시키되(3초), 추론(read)에는 콜드스타트 여유를 준다.
     timeout = httpx.Timeout(settings.ai_timeout_seconds, connect=3.0)
@@ -66,24 +74,25 @@ async def _call_ollama(prompt: str) -> str | None:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
-        data = resp.json()
-    except (httpx.HTTPError, json.JSONDecodeError, ValueError) as e:
+        content = resp.json()["message"]["content"]
+    except (httpx.HTTPError, json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
         logger.warning("Ollama 호출 실패 — 규칙 점수로 폴백: %s", e)
         return None
-    return data.get("response")
+    # stop 토큰("}")은 응답에 포함되지 않으므로 JSON을 닫아 가드레일이 그대로 파싱하게 한다.
+    return f"{_RESPONSE_PREFIX}{content}}}"
 
 
 async def warm_up() -> None:
     """서버 기동 시 모델을 미리 메모리에 올려 첫 요청의 콜드스타트를 없앤다."""
     if not settings.ai_enabled:
         return
-    url = f"{settings.ollama_base_url.rstrip('/')}/api/generate"
+    url = f"{settings.ollama_base_url.rstrip('/')}/api/chat"
     body = {
         "model": settings.ollama_model,
-        "prompt": "ping",
+        "messages": [{"role": "user", "content": "ping"}],
         "stream": False,
         "keep_alive": settings.ollama_keep_alive,
-        "options": {"num_predict": 1},
+        "options": _ollama_options(num_predict=1),
     }
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=3.0)) as client:

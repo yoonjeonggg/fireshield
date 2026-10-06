@@ -52,6 +52,13 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
         )
     )
 
+    # 법제처 조회(외부 API, 캐시 미스 시 ~1초)도 DB 대조를 기다리지 않고 미리 시작한다
+    law_task = (
+        asyncio.create_task(check_recent_amendment(payload.law_name))
+        if payload.claim_type == "law_amendment" and payload.law_name
+        else None
+    )
+
     # --- 0. 블랙리스트 대조 ---
     blacklisted_org = await is_blacklisted(db, "org", payload.claimed_org)
     blacklisted_business = await is_blacklisted(db, "business", payload.target_business)
@@ -79,9 +86,9 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
     law_found = False           # 법제처에서 실제로 조회된 법령인지
     law_misrepresented = False  # 실존 법령을 '최근 개정'이라 허위 주장했는지 (적극적 사기 신호)
     law_claimed_but_missing = False  # 법령 개정을 근거로 들면서 그 법령이 조회 안 됨 (적극적 사기 신호)
-    if payload.claim_type == "law_amendment" and payload.law_name:
+    if law_task is not None:
         try:
-            result = await check_recent_amendment(payload.law_name)
+            result = await law_task
 
             if not result["found"]:
                 law_claimed_but_missing = True
