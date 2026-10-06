@@ -3,3 +3,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E9", "F"]
+
+[tool.pytest.ini_options]
+# CI는 `pytest`로 실행하므로(`python -m pytest`와 달리 현재 폴더가 import 경로에 없음) app 패키지 경로를 명시한다
+pythonpath = ["."]
