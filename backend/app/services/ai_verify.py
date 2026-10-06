@@ -163,25 +163,3 @@ def finalize_scam_assessment(
         )
 
     return result
-
-
-async def assess_scam_risk(
-    rule_score: int,
-    *,
-    claimed_org: str,
-    claimed_person: str,
-    claim_type: str,
-    target_business: str,
-    law_name: str | None,
-    has_account_number: bool,
-) -> GuardrailResult:
-    """AI 판정을 순차 실행하는 편의 래퍼(동시 실행이 필요 없는 호출부용)."""
-    raw, model_available = await request_scam_assessment(
-        claimed_org=claimed_org,
-        claimed_person=claimed_person,
-        claim_type=claim_type,
-        target_business=target_business,
-        law_name=law_name,
-        has_account_number=has_account_number,
-    )
-    return finalize_scam_assessment(raw, model_available, rule_score)

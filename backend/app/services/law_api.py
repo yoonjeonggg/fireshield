@@ -1,6 +1,9 @@
-import httpx, time
-from xml.etree import ElementTree as ET
+import time
 from datetime import datetime, timedelta
+from xml.etree import ElementTree as ET
+
+import httpx
+
 from app.core.config import settings
 
 
