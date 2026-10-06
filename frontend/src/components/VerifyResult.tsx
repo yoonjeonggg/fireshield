@@ -27,6 +27,14 @@ const OFFICIAL_ACCOUNT_LOOKUPS: { label: string; desc: string; href: string }[] 
   },
 ];
 
+// 결과 카드 안의 회색 박스(점수·근거 등) 공통 스타일
+const panelStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  borderRadius: 10,
+  background: "var(--paper-50)",
+  border: "1px solid var(--paper-200)",
+};
+
 type LevelStyle = {
   label: string;
   verdict: string;
@@ -95,14 +103,7 @@ function AiPanel({ ai }: { ai: AiAssessment }) {
   const band = aiBandColor(ai);
 
   return (
-    <div
-      style={{
-        padding: "13px 15px",
-        borderRadius: 10,
-        background: "var(--paper-50)",
-        border: "1px solid var(--paper-200)",
-      }}
-    >
+    <div style={{ ...panelStyle, padding: "13px 15px" }}>
       <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
         <Sparkles size={14} strokeWidth={2} color="var(--primary-500)" />
         <span className="font-semibold" style={{ fontSize: 13, color: "var(--ink-950)" }}>
@@ -243,15 +244,7 @@ export default function VerifyResult({
 
         {/* 규칙 점수 vs AI 점수 — 따로 표시 */}
         <div className="flex flex-col gap-2.5" style={{ marginBottom: 14 }}>
-          <div
-            className="flex items-center gap-2"
-            style={{
-              padding: "12px 14px",
-              borderRadius: 10,
-              background: "var(--paper-50)",
-              border: "1px solid var(--paper-200)",
-            }}
-          >
+          <div className="flex items-center gap-2" style={panelStyle}>
             <ShieldCheck size={14} strokeWidth={2} color="var(--ink-600)" />
             <span className="font-medium" style={{ fontSize: 13, color: "var(--ink-950)" }}>
               공공데이터 규칙 점수
@@ -270,12 +263,7 @@ export default function VerifyResult({
             <div
               key={i}
               className="flex gap-3 items-start"
-              style={{
-                padding: "12px 14px",
-                borderRadius: 10,
-                background: "var(--paper-50)",
-                border: "1px solid var(--paper-200)",
-              }}
+              style={panelStyle}
             >
               <span
                 className="flex items-center justify-center shrink-0"
@@ -336,13 +324,7 @@ export default function VerifyResult({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-3"
-                  style={{
-                    padding: "10px 13px",
-                    borderRadius: 10,
-                    background: "var(--paper-50)",
-                    border: "1px solid var(--paper-200)",
-                    textDecoration: "none",
-                  }}
+                  style={{ ...panelStyle, padding: "10px 13px", textDecoration: "none" }}
                 >
                   <ExternalLink size={15} strokeWidth={2} style={{ color: "var(--ink-400)", flexShrink: 0 }} />
                   <span style={{ fontSize: 13 }}>

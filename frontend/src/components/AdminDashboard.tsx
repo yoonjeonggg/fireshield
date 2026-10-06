@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { fetchAdminStats } from "@/lib/api";
 import { AdminStatsResponse } from "@/types/admin";
-import { RISK_LEVEL_META, RiskLevel } from "@/lib/riskLevel";
+import { RISK_LEVEL_META } from "@/lib/riskLevel";
+import { RiskLevel } from "@/types/verify";
 import RiskLevelStatCards from "@/components/RiskLevelStatCards";
 
 export default function AdminDashboard() {

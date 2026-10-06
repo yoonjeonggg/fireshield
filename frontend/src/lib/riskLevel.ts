@@ -1,6 +1,4 @@
-import { RiskLevelStats } from "@/types/admin";
-
-export type RiskLevel = keyof RiskLevelStats;
+import { RiskLevel } from "@/types/verify";
 
 export const RISK_LEVEL_META: Record<RiskLevel, { label: string; color: string }> = {
   safe: { label: "안전", color: "var(--safe-600)" },

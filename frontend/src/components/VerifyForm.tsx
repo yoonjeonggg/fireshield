@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Building2, User, FileText, Landmark, LoaderCircle, Check } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Building2, User, FileText, Landmark, LoaderCircle, Check, LucideIcon } from "lucide-react";
 import { verifyRequest } from "@/lib/api";
 import { ClaimType, VerifyResponse } from "@/types/verify";
 import VerifyResult from "@/components/VerifyResult";
@@ -27,6 +27,43 @@ const iconStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
+const labelClass = "block text-[13px] font-semibold mb-1.5";
+
+function Field({
+  label,
+  hint,
+  icon: Icon,
+  className = "",
+  ...inputProps
+}: {
+  label: string;
+  hint?: string;
+  icon: LucideIcon;
+  className?: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  const id = useId();
+  return (
+    <div className={className}>
+      <label htmlFor={id} className={labelClass} style={{ color: "var(--ink-800)" }}>
+        {label}
+        {hint && (
+          <span className="font-normal" style={{ color: "var(--ink-400)" }}>
+            {" "}
+            {hint}
+          </span>
+        )}
+      </label>
+      <div className="relative">
+        <Icon size={17} strokeWidth={2} style={iconStyle} />
+        <input id={id} style={inputStyle} {...inputProps} />
+      </div>
+    </div>
+  );
+}
+
+// 법령명 칸이 보이는 요구 사유 — 숨겨진 칸에 남아 있는 값은 전송하지 않는다
+const CLAIM_TYPES_WITH_LAW: ClaimType[] = ["law_amendment", "custom"];
+
 const LOADING_STEPS = [
   "법제처 법령 변경이력 대조 중",
   "소방청 소방시설업 현황 대조 중",
@@ -43,10 +80,14 @@ export default function VerifyForm() {
   const [lawName, setLawName] = useState("");
 
   const [result, setResult] = useState<VerifyResponse | null>(null);
+  // 결과 화면에는 '판정에 쓰인' 계좌번호를 보여준다 (결과가 나온 뒤 입력칸을 고쳐도 바뀌지 않도록)
+  const [submittedAccount, setSubmittedAccount] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(-1);
 
+  const claimSelectId = useId();
+  const showLawName = CLAIM_TYPES_WITH_LAW.includes(claimType);
   const stepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -82,6 +123,7 @@ export default function VerifyForm() {
     const trimmedPerson = claimedPerson.trim();
     const trimmedBusiness = targetBusiness.trim();
     const effectiveClaimType = claimType === "custom" ? claimTypeCustom.trim() : claimType;
+    const trimmedAccount = accountNumber.trim();
 
     if (!trimmedOrg || !trimmedPerson || !trimmedBusiness) {
       setError("공백만으로는 입력할 수 없습니다. 내용을 정확히 입력해주세요.");
@@ -93,18 +135,14 @@ export default function VerifyForm() {
       return;
     }
 
-    if (accountNumber.trim()) {
-      const accountPattern = /^[0-9-]{6,25}$/;
-      if (!accountPattern.test(accountNumber.trim())) {
-        setError("계좌번호는 숫자와 하이픈(-)만 입력 가능합니다. (예: 110-123-456789)");
-        return;
-      }
+    if (trimmedAccount && !/^[0-9-]{6,25}$/.test(trimmedAccount)) {
+      setError("계좌번호는 숫자와 하이픈(-)만 입력 가능합니다. (예: 110-123-456789)");
+      return;
     }
 
     setLoading(true);
     startStepAnimation();
 
-    
     const minDelay = new Promise((resolve) => setTimeout(resolve, LOADING_STEPS.length * 250));
 
     try {
@@ -114,12 +152,13 @@ export default function VerifyForm() {
           claimed_person: trimmedPerson,
           claim_type: effectiveClaimType,
           target_business: trimmedBusiness,
-          account_number: accountNumber.trim() || undefined,
-          law_name: lawName.trim() || undefined,
+          account_number: trimmedAccount || undefined,
+          law_name: (showLawName && lawName.trim()) || undefined,
         }),
         minDelay,
       ]);
       setResult(data);
+      setSubmittedAccount(trimmedAccount || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
@@ -185,43 +224,30 @@ export default function VerifyForm() {
         >
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
-                  발신 기관명
-                </label>
-                <div className="relative">
-                  <Building2 size={17} strokeWidth={2} style={iconStyle} />
-                  <input
-                    style={inputStyle}
-                    value={claimedOrg}
-                    onChange={(e) => setClaimedOrg(e.target.value)}
-                    placeholder="예: OO소방서"
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
-                  담당자명
-                </label>
-                <div className="relative">
-                  <User size={17} strokeWidth={2} style={iconStyle} />
-                  <input
-                    style={inputStyle}
-                    value={claimedPerson}
-                    onChange={(e) => setClaimedPerson(e.target.value)}
-                    placeholder="예: 홍길동"
-                    required
-                  />
-                </div>
-              </div>
+              <Field
+                label="발신 기관명"
+                icon={Building2}
+                value={claimedOrg}
+                onChange={(e) => setClaimedOrg(e.target.value)}
+                placeholder="예: OO소방서"
+                required
+              />
+              <Field
+                label="담당자명"
+                icon={User}
+                value={claimedPerson}
+                onChange={(e) => setClaimedPerson(e.target.value)}
+                placeholder="예: 홍길동"
+                required
+              />
             </div>
 
             <div className="mb-4">
-              <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
+              <label htmlFor={claimSelectId} className={labelClass} style={{ color: "var(--ink-800)" }}>
                 요구 사유
               </label>
               <select
+                id={claimSelectId}
                 style={{ ...inputStyle, paddingLeft: 14 }}
                 value={claimType}
                 onChange={(e) => setClaimType(e.target.value as ClaimType)}
@@ -234,6 +260,7 @@ export default function VerifyForm() {
 
               {claimType === "custom" && (
                 <input
+                  aria-label="요구 사유 직접 입력"
                   style={{ ...inputStyle, paddingLeft: 14, marginTop: 10 }}
                   value={claimTypeCustom}
                   onChange={(e) => setClaimTypeCustom(e.target.value)}
@@ -243,59 +270,37 @@ export default function VerifyForm() {
               )}
             </div>
 
-            {(claimType === "law_amendment" || claimType === "custom") && (
-              <div className="mb-4">
-                <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
-                  언급된 법령명{" "}
-                  <span className="font-normal" style={{ color: "var(--ink-400)" }}>
-                    (해당 시)
-                  </span>
-                </label>
-                <div className="relative">
-                  <FileText size={17} strokeWidth={2} style={iconStyle} />
-                  <input
-                    style={inputStyle}
-                    value={lawName}
-                    onChange={(e) => setLawName(e.target.value)}
-                    placeholder="예: 소방시설 설치 및 관리에 관한 법률"
-                  />
-                </div>
-              </div>
+            {showLawName && (
+              <Field
+                className="mb-4"
+                label="언급된 법령명"
+                hint="(해당 시)"
+                icon={FileText}
+                value={lawName}
+                onChange={(e) => setLawName(e.target.value)}
+                placeholder="예: 소방시설 설치 및 관리에 관한 법률"
+              />
             )}
 
-            <div className="mb-4">
-              <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
-                대상 업체명
-              </label>
-              <div className="relative">
-                <Building2 size={17} strokeWidth={2} style={iconStyle} />
-                <input
-                  style={inputStyle}
-                  value={targetBusiness}
-                  onChange={(e) => setTargetBusiness(e.target.value)}
-                  placeholder="예: 강남소방"
-                  required
-                />
-              </div>
-            </div>
+            <Field
+              className="mb-4"
+              label="대상 업체명"
+              icon={Building2}
+              value={targetBusiness}
+              onChange={(e) => setTargetBusiness(e.target.value)}
+              placeholder="예: 강남소방"
+              required
+            />
 
-            <div className="mb-5">
-              <label className="block text-[13px] font-semibold mb-1.5" style={{ color: "var(--ink-800)" }}>
-                요구받은 계좌번호{" "}
-                <span className="font-normal" style={{ color: "var(--ink-400)" }}>
-                  (선택사항)
-                </span>
-              </label>
-              <div className="relative">
-                <Landmark size={17} strokeWidth={2} style={iconStyle} />
-                <input
-                  style={inputStyle}
-                  value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
-                  placeholder="예: 110-xxx-xxxxxx"
-                />
-              </div>
-            </div>
+            <Field
+              className="mb-5"
+              label="요구받은 계좌번호"
+              hint="(선택사항)"
+              icon={Landmark}
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              placeholder="예: 110-xxx-xxxxxx"
+            />
 
             <button
               type="submit"
@@ -371,7 +376,7 @@ export default function VerifyForm() {
           </div>
         )}
 
-        {result && <VerifyResult result={result} accountNumber={accountNumber.trim() || undefined} />}
+        {result && <VerifyResult result={result} accountNumber={submittedAccount} />}
       </div>
     </section>
   );

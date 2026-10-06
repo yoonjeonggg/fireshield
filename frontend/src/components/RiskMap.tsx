@@ -6,10 +6,19 @@ import { RiskZone, SigunguDetail } from "@/types/riskMap";
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
+// 점수 구간별 색상 — 마커·목록·범례가 모두 이 표를 기준으로 한다 (높은 구간부터)
+const RISK_BANDS = [
+  { min: 60, color: "#d6362c", labelColor: "#fff", legend: "고위험 (60점↑)" },
+  { min: 30, color: "#d9a520", labelColor: "#3a2c04", legend: "주의 (30~59점)" },
+  { min: 0, color: "#2ea866", labelColor: "#fff", legend: "관찰 (30점 미만)" },
+] as const;
+
+function riskBand(score: number) {
+  return RISK_BANDS.find((band) => score >= band.min) ?? RISK_BANDS[RISK_BANDS.length - 1];
+}
+
 function riskColor(score: number): string {
-  if (score >= 60) return "#d6362c";
-  if (score >= 30) return "#d9a520";
-  return "#2ea866";
+  return riskBand(score).color;
 }
 
 const DARK_MAP_STYLE: google.maps.MapTypeStyle[] = [
@@ -135,7 +144,7 @@ export default function RiskMap() {
           },
           label: {
             text: String(zone.report_count),
-            color: zone.risk_score >= 30 && zone.risk_score < 60 ? "#3a2c04" : "#fff",
+            color: riskBand(zone.risk_score).labelColor,
             fontSize: "11px",
             fontWeight: "700",
           },
@@ -330,18 +339,12 @@ export default function RiskMap() {
           )}
 
           <div className="flex gap-4 mt-2.5 text-[11.5px] opacity-80 relative z-10">
-            <span className="flex items-center gap-1.5">
-              <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#d6362c" }} />
-              고위험 (60점↑)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#d9a520" }} />
-              주의 (30~59점)
-            </span>
-            <span className="flex items-center gap-1.5">
-              <i className="inline-block w-2 h-2 rounded-full" style={{ background: "#2ea866" }} />
-              관찰 (30점 미만)
-            </span>
+            {RISK_BANDS.map((band) => (
+              <span key={band.legend} className="flex items-center gap-1.5">
+                <i className="inline-block w-2 h-2 rounded-full" style={{ background: band.color }} />
+                {band.legend}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -395,82 +398,82 @@ export default function RiskMap() {
                 ))
               )}
             </>
-         ) : (
-  <div
-    className="flex flex-col"
-    style={{
-      maxHeight: 700,
-      overflowY: "auto",
-      background: "var(--white)",
-      border: "1px solid var(--paper-200)",
-      borderRadius: 12,
-    }}
-  >
-    {zones.map((zone, index) => {
-      const isSelected = selectedRegion === zone.region_name;
-      const barPct = Math.max(6, (zone.report_count / maxSidoReportCount) * 100);
-      const rank = index + 1;
-
-      return (
-        <button
-          key={zone.region_name}
-          onClick={() => handleSelectSido(zone)}
-          className="flex items-center gap-3 text-left w-full transition-colors"
-          style={{
-            padding: "10px 14px",
-            background: isSelected ? "var(--primary-100)" : "transparent",
-            borderBottom: index < zones.length - 1 ? "1px solid var(--paper-100)" : "none",
-            cursor: "pointer",
-          }}
-        >
-          <span
-            className="shrink-0 text-xs font-bold text-center"
-            style={{
-              width: 20,
-              color: rank <= 3 ? "var(--primary-700)" : "var(--ink-400)",
-            }}
-          >
-            {rank}
-          </span>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline justify-between gap-2 mb-1">
-              <span
-                className="text-[13px] font-semibold truncate"
-                style={{ color: "var(--ink-950)" }}
-              >
-                {zone.region_name}
-              </span>
-              <span
-                className="text-xs font-bold shrink-0"
-                style={{ color: riskColor(zone.risk_score) }}
-              >
-                {zone.report_count}건
-              </span>
-            </div>
+          ) : (
             <div
+              className="flex flex-col"
               style={{
-                height: 5,
-                borderRadius: 999,
-                background: "var(--paper-100)",
-                overflow: "hidden",
+                maxHeight: 700,
+                overflowY: "auto",
+                background: "var(--white)",
+                border: "1px solid var(--paper-200)",
+                borderRadius: 12,
               }}
             >
-              <div
-                style={{
-                  height: "100%",
-                  width: `${barPct}%`,
-                  background: riskColor(zone.risk_score),
-                  borderRadius: 999,
-                }}
-              />
+              {zones.map((zone, index) => {
+                const isSelected = selectedRegion === zone.region_name;
+                const barPct = Math.max(6, (zone.report_count / maxSidoReportCount) * 100);
+                const rank = index + 1;
+
+                return (
+                  <button
+                    key={zone.region_name}
+                    onClick={() => handleSelectSido(zone)}
+                    className="flex items-center gap-3 text-left w-full transition-colors"
+                    style={{
+                      padding: "10px 14px",
+                      background: isSelected ? "var(--primary-100)" : "transparent",
+                      borderBottom: index < zones.length - 1 ? "1px solid var(--paper-100)" : "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span
+                      className="shrink-0 text-xs font-bold text-center"
+                      style={{
+                        width: 20,
+                        color: rank <= 3 ? "var(--primary-700)" : "var(--ink-400)",
+                      }}
+                    >
+                      {rank}
+                    </span>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2 mb-1">
+                        <span
+                          className="text-[13px] font-semibold truncate"
+                          style={{ color: "var(--ink-950)" }}
+                        >
+                          {zone.region_name}
+                        </span>
+                        <span
+                          className="text-xs font-bold shrink-0"
+                          style={{ color: riskColor(zone.risk_score) }}
+                        >
+                          {zone.report_count}건
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          height: 5,
+                          borderRadius: 999,
+                          background: "var(--paper-100)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${barPct}%`,
+                            background: riskColor(zone.risk_score),
+                            borderRadius: 999,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
-        </button>
-      );
-    })}
-  </div>
-)}
+          )}
         </div>
       </div>
     </section>
