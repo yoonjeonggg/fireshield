@@ -78,8 +78,8 @@ const RISK_CONFIG: Record<RiskLevel, LevelStyle> = {
     Icon: ShieldAlert,
   },
   unverified: {
-    label: "판정 결과 · 확인 불가",
-    verdict: "판정 불가 — 직접 확인 필요",
+    label: "판정 결과 · 추가 확인 권장",
+    verdict: "판단할 정보 부족 — 소방서에 확인해 보세요",
     headBg: "linear-gradient(120deg, var(--primary-700), var(--primary-500))",
     headColor: "#fff",
     barColor: "var(--primary-300)",
