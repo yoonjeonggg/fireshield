@@ -102,7 +102,7 @@
 | Security | AES-256-GCM, HMAC-SHA256 |
 | Frontend | <img src="https://raw.githubusercontent.com/yoonjeonggg/readme-assets/main/stacks/nextJs_icon.png" width="16"> Next.js 16, <img src="https://raw.githubusercontent.com/yoonjeonggg/readme-assets/main/stacks/react_icon.png" width="16"> React 19, <img src="https://raw.githubusercontent.com/yoonjeonggg/readme-assets/main/stacks/tailwind-css_icon.png" width="16"> Tailwind CSS v4 |
 | Map | Google Maps JavaScript API |
-| Test | pytest, pytest-asyncio, ruff, ESLint |
+| Test | pytest, pytest-asyncio, Vitest, ruff, ESLint |
 | Infra | <img src="https://raw.githubusercontent.com/yoonjeonggg/readme-assets/main/stacks/vercel_icon.png" width="16"> Vercel, Docker Compose, GitHub Actions |
 | API Docs | Swagger (FastAPI 내장) |
 | Collaboration | <img src="https://raw.githubusercontent.com/yoonjeonggg/readme-assets/main/stacks/github_icon.png" width="16"> Github, Notion, Figma |
@@ -190,13 +190,13 @@ fireshield/
 │   │   └── services/         # 법제처 조회, AI 판정, 가드레일, 계좌 이력, 위험지도
 │   ├── data/                 # 공공데이터 CSV
 │   ├── scripts/              # 소방시설업 현황 적재 스크립트
-│   ├── tests/                # pytest 테스트 100개
+│   ├── tests/                # pytest 테스트 114개
 │   └── docker-compose.yml    # PostgreSQL
 └── frontend/
     └── src/
         ├── app/              # /, /stats, /guide, /admin 페이지
         ├── components/       # 입력폼, 결과 카드, 위험지도, 통계, 관리자 UI
-        ├── lib/              # API 클라이언트, 위험도 표시 유틸
+        ├── lib/              # API 클라이언트, 입력 검증, 위험도 표시 유틸 (+ Vitest 테스트)
         └── types/            # API 응답 타입
 ```
 
@@ -224,11 +224,18 @@ fireshield/
 **개인정보 보호** `AES-256-GCM` `HMAC-SHA256`
 - 계좌번호를 AES-256-GCM으로 암호화해 저장
 - 반복 신고 집계용으로 복호화가 불가능한 HMAC-SHA256 단방향 해시를 별도 저장 (하이픈·공백을 제거해 표기가 달라도 같은 계좌로 인식)
+- 보관 기간(기본 180일)이 지난 조회 로그를 기동 시·하루 간격으로 자동 삭제하고, 보관 기간이 사기 이력 집계 기간보다 짧게 설정되면 기동 단계에서 거부
 
 **계좌번호 사기 신고 이력 조회** `Provider 패턴`
 - 경찰청 '사이버사기 피해신고 이력조회'는 공식 API가 없어, 같은 계좌번호가 최근 90일간 3회 이상 '위험/의심'으로 조회됐는지 자체 로그로 집계 (경찰청과 동일 기준)
 - 결과 화면에서 경찰청·더치트 공식 조회 페이지로 딥링크 제공
 - Provider 인터페이스로 분리해 외부 데이터 계약 시 구현체만 교체 가능하도록 설계
+- 신고 건수를 '서로 다른 요청자 수'(IP의 HMAC 지문)로 집계해, 한 사람이 같은 계좌를 반복 조회해 무고한 계좌를 사기 계좌로 만들지 못하게 방지
+
+**남용 방지** `Rate Limit`
+- `/verify`에 IP당 분당 요청 수 제한(기본 10회)을 걸어, 초과 시 `429` + `Retry-After` 반환
+- 외부 의존성 없는 슬라이딩 윈도우 제한기로 구현, 거부된 요청은 기록하지 않아 계속 두드려도 정상적으로 풀림
+- 리버스 프록시 뒤에서는 `TRUST_FORWARDED_FOR`로 프록시가 덧붙인 IP만 신뢰 (위조된 앞쪽 값 무시)
 
 **관리자 기능** `X-Admin-Key`
 - 위험도별 조회 건수 통계, 계좌번호를 마스킹한 조회 로그, 블랙리스트 관리 기능 구현
@@ -236,8 +243,9 @@ fireshield/
 - 위험도별 집계를 공통 서비스로 추출하고 요청당 쿼리를 5회 → 1회로 축소
 
 **테스트 · CI/CD** `pytest` `GitHub Actions` `Vercel`
-- /verify 통합, 가드레일 단위, 관리자, 공개 통계, 위험지도, 계좌 이력, 암호화 등 테스트 100개 작성
-- PR·push마다 `ruff` + `pytest`, 프론트엔드 `lint` + `build`를 실행하고, main에 push되어 통과하면 Vercel로 자동 배포
+- /verify 통합, 가드레일 단위, 관리자, 공개 통계, 위험지도, 계좌 이력, 암호화, 요청 횟수 제한, 로그 보관 등 백엔드 테스트 114개 작성
+- 프론트엔드 입력 검증·API 클라이언트 오류 처리를 Vitest로 테스트 (19개)
+- PR·push마다 `ruff` + `pytest`, 프론트엔드 `lint` + `test` + `build`를 실행하고, main에 push되어 통과하면 Vercel로 자동 배포
 - Dependabot으로 의존성을 관리하고 Next.js 크리티컬 RCE 취약점(GHSA-p293-qw3h-jr36) 패치
 
 <br>
@@ -461,6 +469,9 @@ npm run dev
 cd backend
 ruff check .
 pytest
+
+cd ../frontend
+npm test
 ```
 
 <br>
