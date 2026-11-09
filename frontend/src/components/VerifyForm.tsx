@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Building2, User, FileText, Landmark, LoaderCircle, Check, LucideIcon } from "lucide-react";
 import { verifyRequest } from "@/lib/api";
+import { buildVerifyPayload, CLAIM_TYPES_WITH_LAW } from "@/lib/verifyPayload";
 import { ClaimType, VerifyResponse } from "@/types/verify";
 import VerifyResult from "@/components/VerifyResult";
 
@@ -61,9 +62,6 @@ function Field({
   );
 }
 
-// 법령명 칸이 보이는 요구 사유 — 숨겨진 칸에 남아 있는 값은 전송하지 않는다
-const CLAIM_TYPES_WITH_LAW: ClaimType[] = ["law_amendment", "custom"];
-
 const LOADING_STEPS = [
   "법제처 법령 변경이력 대조 중",
   "소방청 소방시설업 현황 대조 중",
@@ -119,26 +117,20 @@ export default function VerifyForm() {
     setError(null);
     setResult(null);
 
-    const trimmedOrg = claimedOrg.trim();
-    const trimmedPerson = claimedPerson.trim();
-    const trimmedBusiness = targetBusiness.trim();
-    const effectiveClaimType = claimType === "custom" ? claimTypeCustom.trim() : claimType;
-    const trimmedAccount = accountNumber.trim();
-
-    if (!trimmedOrg || !trimmedPerson || !trimmedBusiness) {
-      setError("공백만으로는 입력할 수 없습니다. 내용을 정확히 입력해주세요.");
+    const built = buildVerifyPayload({
+      claimedOrg,
+      claimedPerson,
+      claimType,
+      claimTypeCustom,
+      targetBusiness,
+      accountNumber,
+      lawName,
+    });
+    if (!built.ok) {
+      setError(built.error);
       return;
     }
-
-    if (claimType === "custom" && effectiveClaimType.length < 5) {
-      setError("요구 사유를 5자 이상 입력해주세요.");
-      return;
-    }
-
-    if (trimmedAccount && !/^[0-9-]{6,25}$/.test(trimmedAccount)) {
-      setError("계좌번호는 숫자와 하이픈(-)만 입력 가능합니다. (예: 110-123-456789)");
-      return;
-    }
+    const { payload } = built;
 
     setLoading(true);
     startStepAnimation();
@@ -147,18 +139,11 @@ export default function VerifyForm() {
 
     try {
       const [data] = await Promise.all([
-        verifyRequest({
-          claimed_org: trimmedOrg,
-          claimed_person: trimmedPerson,
-          claim_type: effectiveClaimType,
-          target_business: trimmedBusiness,
-          account_number: trimmedAccount || undefined,
-          law_name: (showLawName && lawName.trim()) || undefined,
-        }),
+        verifyRequest(payload),
         minDelay,
       ]);
       setResult(data);
-      setSubmittedAccount(trimmedAccount || undefined);
+      setSubmittedAccount(payload.account_number);
     } catch (err) {
       setError(err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.");
     } finally {
