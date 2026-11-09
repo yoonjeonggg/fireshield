@@ -15,3 +15,5 @@ os.environ.setdefault(
 )
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
 os.environ.setdefault("AI_ENABLED", "false")
+# 요청 횟수 제한은 전용 테스트에서만 켠다 (다른 테스트는 같은 클라이언트로 연속 호출)
+os.environ.setdefault("VERIFY_RATE_LIMIT_PER_MINUTE", "0")

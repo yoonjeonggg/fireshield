@@ -1,10 +1,11 @@
 import asyncio
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.blacklist import is_blacklisted
-from app.core.crypto import encrypt, account_fingerprint
+from app.core.crypto import encrypt, account_fingerprint, client_fingerprint
+from app.core.rate_limit import client_ip, enforce_verify_rate_limit
 from app.core.database import get_db
 from app.models.verify_log import VerifyLog
 from app.schemas.verify import VerifyRequest, VerifyResponse, Evidence, AiAssessment
@@ -188,15 +189,18 @@ def _grade(score: int) -> tuple[str, str]:
 @router.post(
     "/verify",
     response_model=VerifyResponse,
+    dependencies=[Depends(enforce_verify_rate_limit)],
     summary="소방기관 사칭 진위확인",
     description=(
         "사용자가 입력한 소방기관 사칭 의심 정보(발신 기관명, 담당자명, "
         "요구 사유, 대상 업체, 계좌번호 등)를 법제처 법령 변경이력, "
         "소방청 소방시설업 현황 등 공공데이터와 대조하여 "
-        "위험도(safe/caution/danger)를 판정합니다."
+        "위험도(safe/caution/danger)를 판정합니다. "
+        "클라이언트(IP)당 분당 요청 수가 제한되며, 초과 시 429를 반환합니다."
     ),
+    responses={429: {"description": "요청 횟수 제한 초과 (Retry-After 헤더 참고)"}},
 )
-async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
+async def verify(payload: VerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
     money_requested = payload.account_number is not None
 
     # --- AI 판정을 공공데이터 대조와 동시에 시작 (프롬프트는 규칙 점수에 의존하지 않음) ---
@@ -299,6 +303,7 @@ async def verify(payload: VerifyRequest, db: AsyncSession = Depends(get_db)):
             target_business=payload.target_business,
             account_number=encrypt(payload.account_number),  # 암호화해서 저장
             account_hash=account_hash,  # 같은 계좌 반복 신고 집계용 (단방향 해시)
+            reporter_hash=client_fingerprint(client_ip(request)),  # 같은 요청자 중복 집계 방지
             risk_level=risk_level,
             score=score,
             rule_score=rule_score,

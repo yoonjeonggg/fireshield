@@ -18,6 +18,8 @@ class VerifyLog(Base):
     target_business = Column(String)
     account_number = Column(String)  # AES-256-GCM 암호화 저장
     account_hash = Column(String, index=True)  # 결정적 키 해시 — 같은 계좌 반복 신고 집계용
+    # 요청자 IP 키 해시 — 같은 요청자의 반복 조회를 신고 1건으로 집계하기 위함 (IP 원문은 저장 안 함)
+    reporter_hash = Column(String, nullable=True)
     risk_level = Column(String)
     score = Column(Integer)  # 최종(보수적) 점수
     rule_score = Column(Integer, nullable=True)  # 규칙 기반 점수
