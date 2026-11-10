@@ -43,7 +43,7 @@ def teardown_module(module):
         pass
 
 
-async def _insert_log(account_hash, risk_level, created_at=None):
+async def _insert_log(account_hash, risk_level, created_at=None, reporter_hash=None):
     async with _Session() as session:
         log = VerifyLog(
             claimed_org="테스트기관",
@@ -54,6 +54,7 @@ async def _insert_log(account_hash, risk_level, created_at=None):
             account_hash=account_hash,
             risk_level=risk_level,
             score=0,
+            reporter_hash=reporter_hash,
         )
         if created_at is not None:
             log.created_at = created_at
@@ -146,3 +147,46 @@ def test_different_accounts_are_not_conflated():
     result = asyncio.run(_run())
     assert result.report_count == 0
     assert result.reported is False
+
+
+def test_same_reporter_counts_once():
+    # 한 요청자가 같은 계좌를 여러 번 조회해도 1건으로 센다 (건수 부풀리기 방지)
+    account_hash = account_fingerprint("110-100-000101")
+
+    async def _run():
+        for _ in range(5):
+            await _insert_log(account_hash, "danger", reporter_hash="reporter-a")
+        return await _check(account_hash)
+
+    result = asyncio.run(_run())
+    assert result.report_count == 1
+    assert result.reported is False
+
+
+def test_distinct_reporters_reach_threshold():
+    account_hash = account_fingerprint("110-100-000102")
+
+    async def _run():
+        for i in range(settings.fraud_check_report_threshold):
+            await _insert_log(account_hash, "danger", reporter_hash=f"reporter-{i}")
+            await _insert_log(account_hash, "caution", reporter_hash=f"reporter-{i}")  # 중복
+        return await _check(account_hash)
+
+    result = asyncio.run(_run())
+    assert result.report_count == settings.fraud_check_report_threshold
+    assert result.reported is True
+
+
+def test_legacy_logs_without_reporter_count_individually():
+    # reporter_hash 도입 전 로그는 요청자를 알 수 없으므로 한 건씩 센다
+    account_hash = account_fingerprint("110-100-000103")
+
+    async def _run():
+        await _insert_log(account_hash, "danger")
+        await _insert_log(account_hash, "danger")
+        await _insert_log(account_hash, "danger", reporter_hash="reporter-x")
+        await _insert_log(account_hash, "danger", reporter_hash="reporter-x")
+        return await _check(account_hash)
+
+    result = asyncio.run(_run())
+    assert result.report_count == 3

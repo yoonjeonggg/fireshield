@@ -63,3 +63,17 @@ def account_fingerprint(account_number: str | None) -> str | None:
 
     key = _get_key()
     return hmac.new(key, f"acct:{normalized}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+def client_fingerprint(ip: str | None) -> str | None:
+    """
+    요청자 IP를 결정적 키 해시로 변환합니다.
+
+    - 같은 사람이 같은 계좌를 반복 조회해 '신고 건수'를 부풀리지 못하도록,
+      계좌 사기 이력 집계를 '서로 다른 요청자 수' 기준으로 하는 데 씁니다.
+    - IP 원문은 저장하지 않으며, 계좌 지문과 접두어를 달리해 서로 섞이지 않게 합니다.
+    """
+    if not ip:
+        return None
+
+    key = _get_key()
+    return hmac.new(key, f"client:{ip}".encode("utf-8"), hashlib.sha256).hexdigest()

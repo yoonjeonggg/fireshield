@@ -327,9 +327,10 @@ def test_verify_flags_repeatedly_reported_account(monkeypatch):
     monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
     account_number = "110-999-000002"
 
-    # 임계치만큼 같은 계좌로 위험 판정을 쌓는다 (_FRAUD_CLAIM_TYPE이라 매번 danger).
-    for _ in range(settings.fraud_check_report_threshold):
-        prior = client.post("/api/v1/verify", json=_fraud_payload(account_number))
+    # 서로 다른 요청자 임계치 명이 같은 계좌로 위험 판정을 쌓는다 (_FRAUD_CLAIM_TYPE이라 매번 danger).
+    for i in range(settings.fraud_check_report_threshold):
+        reporter = TestClient(fastapi_app, client=(f"10.0.0.{i + 1}", 50000))
+        prior = reporter.post("/api/v1/verify", json=_fraud_payload(account_number))
         assert prior.json()["risk_level"] == "danger"
 
     # 표기 방식(하이픈 위치)이 달라도 같은 계좌로 인식되어야 한다.
@@ -357,3 +358,44 @@ def test_verify_different_account_number_is_unaffected(monkeypatch):
 
     fraud_evidence = next(e for e in body["evidence"] if e["source"] == "계좌번호 사기 신고 이력")
     assert fraud_evidence["matched"] is False
+
+
+def test_same_reporter_repeating_does_not_inflate_report_count(monkeypatch):
+    # 한 사람이 같은 계좌를 여러 번 조회해도 신고 1건으로만 집계되어야 한다 (건수 부풀리기 방지).
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    account_number = "110-999-000004"
+    same_reporter = TestClient(fastapi_app, client=("10.0.1.1", 50000))
+
+    for _ in range(settings.fraud_check_report_threshold + 2):
+        same_reporter.post("/api/v1/verify", json=_fraud_payload(account_number))
+
+    body = client.post("/api/v1/verify", json=_fraud_payload(account_number)).json()
+    fraud_evidence = next(e for e in body["evidence"] if e["source"] == "계좌번호 사기 신고 이력")
+    assert fraud_evidence["matched"] is False
+    assert "1건" in fraud_evidence["result"]
+
+
+# --- 요청 횟수 제한 ---------------------------------------------------------
+
+
+def test_verify_rate_limit_returns_429_with_retry_after(monkeypatch):
+    from app.core.rate_limit import verify_limiter
+
+    monkeypatch.setattr(ai_verify.settings, "ai_enabled", False)
+    monkeypatch.setattr(settings, "verify_rate_limit_per_minute", 2)
+    verify_limiter.reset()
+    limited = TestClient(fastapi_app, client=("10.0.2.1", 50000))
+    other = TestClient(fastapi_app, client=("10.0.2.2", 50000))
+    try:
+        for _ in range(2):
+            assert limited.post("/api/v1/verify", json=_fraud_payload(None)).status_code == 200
+
+        resp = limited.post("/api/v1/verify", json=_fraud_payload(None))
+        assert resp.status_code == 429
+        assert int(resp.headers["Retry-After"]) >= 1
+        assert "요청이 너무 많습니다" in resp.json()["detail"]
+
+        # 다른 클라이언트는 영향을 받지 않는다
+        assert other.post("/api/v1/verify", json=_fraud_payload(None)).status_code == 200
+    finally:
+        verify_limiter.reset()

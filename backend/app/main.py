@@ -13,7 +13,8 @@ from app.api.v1.admin import router as admin_router
 from app.api.v1.public_stats import router as public_stats_router
 
 from app.api.v1.verify import router as verify_router
-from app.core.database import engine
+from app.core.database import engine, AsyncSessionLocal
+from app.services.log_retention import run_retention_loop
 from app.core.config import settings
 from app.models.verify_log import Base
 
@@ -31,15 +32,19 @@ async def lifespan(app: FastAPI):
             "ADD COLUMN IF NOT EXISTS rule_score INTEGER",
             "ADD COLUMN IF NOT EXISTS ai_score INTEGER",
             "ADD COLUMN IF NOT EXISTS ai_status VARCHAR",
+            "ADD COLUMN IF NOT EXISTS reporter_hash VARCHAR",
         ):
             await conn.execute(text(f"ALTER TABLE verify_logs {column_ddl}"))
     # 첫 요청의 콜드스타트를 피하려고 백그라운드로 모델 예열 (실패해도 무시)
     warm_task = asyncio.create_task(warm_up_ai())
     # 위험지역 CSV 파싱/집계(수백 ms)도 스레드에서 미리 끝내 첫 지도 요청이 기다리지 않게 한다
     risk_warm_task = asyncio.create_task(asyncio.to_thread(warm_up_risk_data))
+    # 보관 기간이 지난 진위확인 로그(암호화된 계좌번호 포함)를 기동 시·하루 간격으로 삭제
+    retention_task = asyncio.create_task(run_retention_loop(AsyncSessionLocal))
     yield
     warm_task.cancel()
     risk_warm_task.cancel()
+    retention_task.cancel()
 
 
 app = FastAPI(title="FireShield API", lifespan=lifespan)

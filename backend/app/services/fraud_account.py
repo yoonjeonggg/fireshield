@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import func, select
+from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -34,7 +34,7 @@ SELF_REPORT_SOURCE = "FireShield 자체 신고 이력"
 class FraudAccountResult:
     checked: bool       # 실제로 조회를 수행했는지 (계좌번호 미입력 시 False)
     reported: bool      # 임계치 이상 반복 신고 이력이 있는지
-    report_count: int   # 집계된 신고(의심 조회) 횟수
+    report_count: int   # 집계된 신고 건수 (서로 다른 요청자 기준)
     window_days: int    # 집계 기간(일)
     source: str         # 데이터 출처 설명
 
@@ -64,6 +64,10 @@ class SelfReportProvider:
     사람이 '이 계좌로 송금하라'는 요구를 받고 의심했다는 뜻이므로 사기 계좌일
     가능성이 높다. (안전 판정으로 끝난 조회는 정상 계좌를 확인한 것일 수 있어
     집계에서 제외한다.)
+
+    한 사람이 같은 계좌를 여러 번 조회해 건수를 부풀리지 못하도록, 건수는
+    '서로 다른 요청자(reporter_hash) 수'로 센다. reporter_hash가 없는 과거
+    로그는 요청자를 알 수 없으므로 한 건씩 따로 센다.
     """
 
     RISKY_LEVELS = ("caution", "danger")
@@ -86,7 +90,12 @@ class SelfReportProvider:
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
         stmt = (
-            select(func.count())
+            select(
+                func.count(distinct(VerifyLog.reporter_hash))
+                + func.coalesce(
+                    func.sum(case((VerifyLog.reporter_hash.is_(None), 1), else_=0)), 0
+                )
+            )
             .select_from(VerifyLog)
             .where(
                 VerifyLog.account_hash == account_hash,
